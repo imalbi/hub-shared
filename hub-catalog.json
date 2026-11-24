@@ -20,6 +20,20 @@
       "version": "1.0.0",
       "path": "mail",
       "provides": ["mail"]
+    },
+    {
+      "name": "sites",
+      "title": "Siti",
+      "description": "Disponibilità dei siti e cronologia giornaliera.",
+      "version": "1.0.0",
+      "path": "sites"
+    },
+    {
+      "name": "weather",
+      "title": "Meteo",
+      "description": "Previsioni locali e ricerca della città per Oggi.",
+      "version": "1.0.0",
+      "path": "weather"
     }
   ]
 }
