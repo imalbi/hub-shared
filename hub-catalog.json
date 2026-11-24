@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "name": "Hub Shared Modules",
+  "description": "Moduli condivisi per installazioni personali di Hub.",
+  "modules": [
+    {
+      "name": "lavoro",
+      "title": "Lavoro",
+      "description": "Ricerca annunci, candidature, colloqui e valutazione delle opportunità.",
+      "version": "1.0.0",
+      "path": "lavoro"
+    }
+  ]
+}

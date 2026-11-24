@@ -1,0 +1,1 @@
+ALTER TABLE `purged_jobs` ADD `codes` text;

@@ -1,0 +1,1 @@
+ALTER TABLE `mail_checked` ADD `answered_at` integer;
