@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseHTML } from '../../apps/server/src/core/module-html.ts';
+import { parseHTML } from 'linkedom';
 import { cleanHtml } from './clean-html.ts';
 
 // Everything here is invented markup. The server hands the cleaner a blank linkedom document; the browser (16g) will

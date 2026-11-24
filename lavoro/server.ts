@@ -3,12 +3,9 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { listThreadEntries, windowStart } from '../../apps/server/src/modules/mail/router.ts';
-import { configSchema as mailModuleConfigSchema } from '../../apps/server/src/modules/mail/config.ts';
-import { himalaya, messageViewSchema, plainTextOf, readArgs } from '../../apps/server/src/modules/mail/himalaya.ts';
-import { parseHTML } from '../../apps/server/src/core/module-html.ts';
+import { parseHTML } from 'linkedom';
 import { createLiveHub } from '../../apps/server/src/core/live.ts';
-import { defineModule, TRPCError, z } from '../../apps/server/src/core/module.ts';
+import { defineModule, TRPCError, z, type MailThreadEntry } from '../../apps/server/src/core/module.ts';
 import { and, desc, eq, inArray, isNull, sql } from '../../apps/server/src/core/module-db.ts';
 import { agentOrLoopbackProcedure, loopbackProcedure, router } from '../../apps/server/src/core/trpc.ts';
 import type { Db } from '../../apps/server/src/db/index.ts';
@@ -58,6 +55,7 @@ import {
   proposeFollowUps,
   runMailCheck,
   saveThreadAddresses,
+  windowStart,
   type MailCheckState,
 } from './mail-check.ts';
 import { sameCompanyApplications, type CompanyApplication } from './same-company.ts';
@@ -464,13 +462,17 @@ export function createLavoroModule({
 } = {}) {
   return defineModule({
     name: 'lavoro',
+    optional: {
+      mail: 'Collega le email dei recruiter alle candidature e propone aggiornamenti automatici',
+    },
     // Discovery skips a module whose config fails and says nothing useful, so the slice is accepted as-is here and
     // parsed strictly inside `create`: a bad profile leaves the module loaded and `state` names the offending keys.
     config: z.unknown(),
     // Impostazioni draws its form and checks a save with the strict profile; loading stays tolerant, as above.
     settingsSchema: profileSchema,
     migrations: fileURLToPath(new URL('./drizzle', import.meta.url)),
-    create({ config, db, run, fetch, log }) {
+    create({ config, db, run, fetch, log, capabilities }) {
+      const mail = capabilities.get('mail');
       const parsedProfile = profile ? { success: true as const, data: profile } : profileSchema.safeParse(config);
       const registry = new Map(sources.map((source) => [source.name, source]));
       const cleaner = parseHTML('<!doctype html><html><body></body></html>').document;
@@ -903,12 +905,12 @@ export function createLavoroModule({
 
       /** One mail check at a time; the work reads only mail no earlier run read, so calling it often is cheap. */
       function startMailCheck() {
-        if (!mailConfig || mailConfig.accounts.length === 0 || mailWork) return false;
+        if (!mail || !mailConfig || mailConfig.accounts.length === 0 || mailWork) return false;
         const entry = { controller: new AbortController(), done: Promise.resolve() };
         mailWork = entry;
         mailState = { running: true, done: 0, remaining: 0, reason: null, date: clock.now() };
         entry.done = runMailCheck(
-          { db, run, fetch: effectiveFetch, gate, log, now: clock.now, config: mailConfig },
+          { db, mail, fetch: effectiveFetch, gate, log, now: clock.now, config: mailConfig },
           entry.controller.signal,
           (progress) => {
             if (mailState) Object.assign(mailState, progress);
@@ -928,7 +930,7 @@ export function createLavoroModule({
         void live.notify();
         return true;
       }
-      if (mailConfig?.auto && mailConfig.accounts.length > 0) {
+      if (mail && mailConfig?.auto && mailConfig.accounts.length > 0) {
         // shortcut: a fixed ten minute poll while the server runs; step 39 owns mail polling without a page.
         mailTimers = [setTimeout(startMailCheck, 30_000), setInterval(startMailCheck, 1_800_000)];
         for (const timer of mailTimers) timer.unref();
@@ -1577,11 +1579,12 @@ export function createLavoroModule({
                   .map((row) => row.address),
               );
               const suggestions = new Set<string>();
+              if (!mail) return [];
               for (const account of mailConfig?.accounts ?? []) {
-                const listing = await listThreadEntries(run, account, windowStart(60, application.appliedAt));
+                const listing = await mail.listThreadEntries(account, windowStart(60, application.appliedAt));
                 for (const entry of listing.entries.filter((row) => row.mailbox === 'sent' && row.counterpart)) {
-                  const result = await himalaya(run, readArgs(account, 'sent', entry.id), messageViewSchema);
-                  const text = `${entry.subject} ${result.ok ? plainTextOf(result.value) : ''}`;
+                  const textBody = await mail.readMessageText(account, 'sent', entry.id);
+                  const text = `${entry.subject} ${textBody ?? ''}`;
                   if (
                     (companyEvidence(job.company, text) || companyEvidence(job.title, text)) &&
                     entry.counterpart &&
@@ -1595,7 +1598,7 @@ export function createLavoroModule({
           }),
           // The local-model mail check (step 51). Loopback only: proposals carry subjects, which stay on the PC.
           mailCheck: router({
-            info: loopbackProcedure.query(() => ({ enabled: (mailConfig?.accounts.length ?? 0) > 0 })),
+            info: loopbackProcedure.query(() => ({ enabled: Boolean(mail) && (mailConfig?.accounts.length ?? 0) > 0 })),
             run: loopbackProcedure
               .meta({
                 label: 'Controlla posta',
@@ -1665,12 +1668,11 @@ export function createLavoroModule({
                   .from(mailProposals)
                   .where(and(eq(mailProposals.id, input.id), isNull(mailProposals.resolution)))
                   .get();
-                let entries: Awaited<ReturnType<typeof listThreadEntries>>['entries'] = [];
-                if (selected?.kind === 'link' && mailConfig?.accounts.includes(selected.account)) {
+                let entries: MailThreadEntry[] = [];
+                if (mail && selected?.kind === 'link' && mailConfig?.accounts.includes(selected.account)) {
                   try {
                     entries = (
-                      await listThreadEntries(
-                        run,
+                      await mail.listThreadEntries(
                         selected.account,
                         windowStart(mailConfig.windowDays, new Date(clock.now())),
                       )
@@ -1690,7 +1692,7 @@ export function createLavoroModule({
                   if (!app) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Posting has no application' });
                   if (proposal.kind === 'link') {
                     const { account, messageId, key } = proposal;
-                    saveThreadAddresses(tx, key, entries, messageId, clock.now());
+                    saveThreadAddresses(tx, key, mail?.threadOf(entries, messageId) ?? null, clock.now());
                     // What the mail asked for was held back until the owner confirmed it belongs here.
                     const read = tx
                       .select()
@@ -1856,7 +1858,7 @@ export function createLavoroModule({
                   messageId: z.string().min(1).max(320),
                 }),
               )
-              .mutation(async ({ input, ctx }) => {
+              .mutation(async ({ input }) => {
                 ready();
                 if (!db.select().from(jobApplied).where(eq(jobApplied.key, input.key)).get()) {
                   throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Posting has no application' });
@@ -1865,15 +1867,14 @@ export function createLavoroModule({
                   .values({ ...input, linkedAt: new Date(clock.now()) })
                   .onConflictDoNothing()
                   .run();
-                const configuredMail = mailModuleConfigSchema.safeParse(ctx.config.modules?.mail);
                 if (
-                  mailConfig?.accounts.includes(input.account) ||
-                  (configuredMail.success &&
-                    configuredMail.data?.accounts.some((account) => account.account === input.account))
+                  mail &&
+                  (mailConfig?.accounts.includes(input.account) ||
+                    mail.accounts().some((account) => account.account === input.account))
                 ) {
                   try {
-                    const listing = await listThreadEntries(run, input.account, windowStart(60, new Date(clock.now())));
-                    saveThreadAddresses(db, input.key, listing.entries, input.messageId, clock.now());
+                    const listing = await mail.listThreadEntries(input.account, windowStart(60, new Date(clock.now())));
+                    saveThreadAddresses(db, input.key, mail.threadOf(listing.entries, input.messageId), clock.now());
                   } catch {
                     /* The link stays valid when mail is unavailable. */
                   }

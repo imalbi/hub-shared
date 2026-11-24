@@ -1,12 +1,13 @@
-import type { DiscoveredDeps } from '../../apps/server/src/core/module.ts';
-import type { Run } from '../../apps/server/src/core/exec.ts';
+import type {
+  DiscoveredDeps,
+  MailCapability,
+  MailThreadEntry,
+  MailThreadView,
+} from '../../apps/server/src/core/module.ts';
 import type { llmGate } from '../../apps/server/src/core/llm-gate.ts';
 import { z } from '../../apps/server/src/core/module.ts';
 import { and, desc, eq, inArray, isNull } from '../../apps/server/src/core/module-db.ts';
 import type { Db } from '../../apps/server/src/db/index.ts';
-import { himalaya, messageViewSchema, plainTextOf, readArgs } from '../../apps/server/src/modules/mail/himalaya.ts';
-import { listThreadEntries, windowStart } from '../../apps/server/src/modules/mail/router.ts';
-import { threadOf, type ThreadEntry } from '../../apps/server/src/modules/mail/thread.ts';
 import { localDay } from '../../apps/web/src/lib/day.ts';
 import { isActive } from './applications.ts';
 import type { Profile } from './config.ts';
@@ -148,7 +149,7 @@ export function newestFirst(a: string | null, b: string | null) {
 
 /** The first message the owner sent in this thread after `receivedAt`, or null: an earlier one is the application itself. */
 export function repliedAt(
-  thread: { messages: readonly Pick<ThreadEntry, 'mailbox' | 'date'>[] } | null,
+  thread: { messages: readonly Pick<MailThreadEntry, 'mailbox' | 'date'>[] } | null,
   receivedAt: number,
 ) {
   const times = (thread?.messages ?? [])
@@ -159,7 +160,14 @@ export function repliedAt(
 }
 
 /** Stamps `answeredAt` on the open "Da fare" items of an account whose thread holds a later sent message. */
-function markAnswered(db: Db, account: string, entries: readonly ThreadEntry[], todoDays: number, now: number) {
+function markAnswered(
+  db: Db,
+  mail: MailCapability,
+  account: string,
+  entries: readonly MailThreadEntry[],
+  todoDays: number,
+  now: number,
+) {
   const open = db
     .select()
     .from(mailChecked)
@@ -176,7 +184,7 @@ function markAnswered(db: Db, account: string, entries: readonly ThreadEntry[], 
     const received = (row.receivedAt ?? row.checkedAt).getTime();
     const parsed = mailAnswerSchema.safeParse(row.answer);
     if (received < now - todoDays * 86_400_000 || !parsed.success || !parsed.data.ask.trim()) continue;
-    const at = repliedAt(threadOf(entries, row.messageId), received);
+    const at = repliedAt(mail.threadOf(entries, row.messageId), received);
     if (at !== null)
       db.update(mailChecked)
         .set({ answeredAt: new Date(at) })
@@ -296,9 +304,13 @@ export function proposeFollowUps(
   return added;
 }
 
+export function windowStart(days: number, now: Date): string {
+  return new Date(now.getTime() - (days + 1) * 86_400_000).toISOString().slice(0, 10);
+}
+
 type Deps = {
   db: Db;
-  run: Run;
+  mail: MailCapability;
   fetch: typeof fetch;
   gate: typeof llmGate;
   log: DiscoveredDeps['log'];
@@ -306,19 +318,8 @@ type Deps = {
   config: Profile['mailCheck'];
 };
 
-async function bodyOf(run: Run, account: string, id: string) {
-  const result = await himalaya(run, readArgs(account, 'INBOX', id), messageViewSchema);
-  return result.ok ? plainTextOf(result.value) : null;
-}
-
-export function saveThreadAddresses(
-  db: Pick<Db, 'insert'>,
-  key: string,
-  entries: readonly ThreadEntry[],
-  messageId: string,
-  now: number,
-) {
-  for (const message of threadOf(entries, messageId)?.messages ?? []) {
+export function saveThreadAddresses(db: Pick<Db, 'insert'>, key: string, thread: MailThreadView | null, now: number) {
+  for (const message of thread?.messages ?? []) {
     const address = message.counterpart?.toLowerCase();
     if (address && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address))
       db.insert(applicationAddress)
@@ -331,12 +332,13 @@ export function saveThreadAddresses(
 /** The application that already owns a conversation: a link on any message of the same thread, if there is exactly one. */
 function linkedCandidate(
   db: Db,
+  mail: MailCapability,
   account: string,
-  entries: readonly ThreadEntry[],
+  entries: readonly MailThreadEntry[],
   messageId: string,
   all: Candidate[],
 ) {
-  const ids = threadOf(entries, messageId)?.messages.flatMap((m) => (m.messageId ? [m.messageId] : [])) ?? [];
+  const ids = mail.threadOf(entries, messageId)?.messages.flatMap((m) => (m.messageId ? [m.messageId] : [])) ?? [];
   if (ids.length === 0) return null;
   const owners = new Set(
     db
@@ -362,7 +364,7 @@ export async function runMailCheck(
   signal: AbortSignal,
   onProgress: (progress: { done: number; remaining: number }) => void,
 ): Promise<MailCheckResult & { reason: string | null }> {
-  const { db, run, config } = deps;
+  const { db, mail, config } = deps;
   const result = { checked: 0, linked: 0, suggested: 0, proposed: 0, reason: null as string | null };
   const after = windowStart(config.windowDays, new Date(deps.now()));
   const allCandidates = openCandidates(db, Number.MAX_SAFE_INTEGER);
@@ -380,12 +382,12 @@ export async function runMailCheck(
     .innerJoin(jobs, eq(jobs.key, applicationAddress.key))
     .all()
     .filter((row) => !row.closedAt && isActive(row.status));
-  const listings = new Map<string, ThreadEntry[]>();
-  const queue: { account: string; entry: ThreadEntry; entries: ThreadEntry[] }[] = [];
+  const listings = new Map<string, MailThreadEntry[]>();
+  const queue: { account: string; entry: MailThreadEntry; entries: MailThreadEntry[] }[] = [];
   for (const account of config.accounts) {
     let listing;
     try {
-      listing = await listThreadEntries(run, account, after);
+      listing = await mail.listThreadEntries(account, after);
     } catch {
       result.reason = 'account di posta non raggiungibile';
       continue;
@@ -411,9 +413,9 @@ export async function runMailCheck(
   for (const [index, { account, entry, entries }] of batch.entries()) {
     if (signal.aborted) break;
     const messageId = entry.messageId ?? '';
-    const linked = linkedCandidate(db, account, entries, messageId, allCandidates);
-    const threadIds =
-      threadOf(entries, messageId)?.messages.flatMap((message) => (message.messageId ? [message.messageId] : [])) ?? [];
+    const linked = linkedCandidate(db, mail, account, entries, messageId, allCandidates);
+    const thread = mail.threadOf(entries, messageId);
+    const threadIds = thread?.messages.flatMap((message) => (message.messageId ? [message.messageId] : [])) ?? [];
     const alreadyOwned =
       threadIds.length > 0 &&
       !!db
@@ -434,9 +436,9 @@ export async function runMailCheck(
         .onConflictDoNothing()
         .run();
       result.linked += Number(inserted.changes);
-      saveThreadAddresses(db, matched.key, entries, messageId, deps.now());
+      saveThreadAddresses(db, matched.key, thread, deps.now());
     }
-    const body = await bodyOf(run, account, entry.id);
+    const body = await mail.readMessageText(account, 'INBOX', entry.id);
     // An unreadable body is retried by the next run: it is not recorded as checked.
     if (body === null) continue;
     const selected = linked ?? matched;
@@ -545,6 +547,6 @@ export async function runMailCheck(
     onProgress({ done: index + 1, remaining: batch.length - index - 1 });
   }
   // Also when nothing new arrived: a reply the owner sent since the last run takes its item out of Oggi.
-  for (const [account, entries] of listings) markAnswered(db, account, entries, config.todoDays, deps.now());
+  for (const [account, entries] of listings) markAnswered(db, mail, account, entries, config.todoDays, deps.now());
   return result;
 }

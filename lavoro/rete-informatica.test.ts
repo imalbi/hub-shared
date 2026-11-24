@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseHTML } from '../../apps/server/src/core/module-html.ts';
+import { parseHTML } from 'linkedom';
 import { card, detail, html, jobLink, listing, LIST_URL, serveHtml } from './fake-rete.ts';
 import { capturingLog, silentLog, testProfile } from './harness.ts';
 import { createReteInformaticaSource, jobUrl, placeOf, readCard, readDetail } from './rete-informatica.ts';

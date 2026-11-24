@@ -1,4 +1,4 @@
-import { parseHTML } from '../../apps/server/src/core/module-html.ts';
+import { parseHTML } from 'linkedom';
 import { z } from '../../apps/server/src/core/module.ts';
 import { fetchBounded, readBoundedJson, readBoundedText } from './bounded-fetch.ts';
 import { cleanHtml } from './clean-html.ts';

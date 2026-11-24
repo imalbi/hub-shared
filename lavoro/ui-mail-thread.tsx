@@ -1,20 +1,19 @@
 import { LoadingSkeleton } from '../../apps/web/src/components/ui/loading-skeleton.tsx';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMailTRPC } from '../../apps/web/src/modules/mail/use-mail.ts';
-import type { ThreadEntry, ThreadView } from '../../apps/server/src/modules/mail/thread.ts';
-import type { MailMessage } from '../../apps/server/src/modules/mail/himalaya.ts';
+import type { MailMessage, MailThreadEntry, MailThreadView } from '../../apps/server/src/core/capabilities.ts';
 import { HoldButton } from '../../apps/web/src/components/hold-button.tsx';
 import { copy } from './copy.ts';
+import { useMailTRPC } from './ui-mail-data.ts';
 
 type Answer = {
   account: string;
   messageId: string;
-  thread: ThreadView | null;
+  thread: MailThreadView | null;
   status?: 'ok' | 'account' | 'missing' | 'timeout';
 };
 
-function ThreadMessage({ account, message }: { account: string; message: ThreadEntry }) {
+function ThreadMessage({ account, message }: { account: string; message: MailThreadEntry }) {
   const [reading, setReading] = useState(false);
   const mail = useMailTRPC();
   const cache = useQueryClient();

@@ -1,0 +1,44 @@
+{
+  "work/310": {
+    "parts": [
+      {
+        "headers": [],
+        "is_encoding_problem": false,
+        "body": { "Text": "Buongiorno,\nvorremmo proporle un colloquio.\n" }
+      }
+    ],
+    "text_body": [0],
+    "html_body": [],
+    "attachments": []
+  },
+  "work/308": {
+    "parts": [
+      { "headers": [], "is_encoding_problem": false, "body": { "Multipart": [1, 2] } },
+      { "headers": [], "is_encoding_problem": false, "body": { "Text": "Versione testo della risposta.\n" } },
+      { "headers": [], "is_encoding_problem": false, "body": { "Html": "<p>Versione <i>html</i> della risposta.</p>" } }
+    ],
+    "text_body": [1],
+    "html_body": [2],
+    "attachments": []
+  },
+  "work/309": {
+    "parts": [
+      {
+        "headers": [],
+        "is_encoding_problem": false,
+        "body": {
+          "Html": "<html><head><style>p { color: red; }</style></head><body><script>alert(1)</script><h1>Titolo</h1><p>Primo <b>paragrafo</b> &amp; resto.</p><p>Secondo<br>riga</p><img src=\"https://example.org/pixel.png\"></body></html>"
+        }
+      }
+    ],
+    "text_body": [0],
+    "html_body": [0],
+    "attachments": []
+  },
+  "personal/88": {
+    "parts": [{ "headers": [], "is_encoding_problem": false, "body": { "Text": "Benvenuto nel club di prova.\n" } }],
+    "text_body": [0],
+    "html_body": [],
+    "attachments": [{ "name": "tessera.pdf" }]
+  }
+}

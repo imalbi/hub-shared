@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseHTML } from '../../apps/server/src/core/module-html.ts';
+import { parseHTML } from 'linkedom';
 import { board, BOARD_URL, detail, detailUrl, element, html, serveHtml } from './fake-iren.ts';
 import { silentLog, testProfile } from './harness.ts';
 import { createIrenSource, readBoard, readDetail } from './iren.ts';

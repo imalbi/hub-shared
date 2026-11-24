@@ -1,6 +1,6 @@
 import net from 'node:net';
 import { PinnedHttpError, pinnedRequest, TRPCError, type PinnedTarget } from '../../apps/server/src/core/module.ts';
-import { parseHTML } from '../../apps/server/src/core/module-html.ts';
+import { parseHTML } from 'linkedom';
 import { cleanHtml } from './clean-html.ts';
 import { isPrivateOrLoopbackIp, isPublicHostname } from './public-host.ts';
 import { readDetail } from './rete-informatica.ts';

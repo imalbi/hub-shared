@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseHTML } from '../../apps/server/src/core/module-html.ts';
+import { parseHTML } from 'linkedom';
 import { enel, listing } from './fake-avature.ts';
 import { silentLog, testProfile } from './harness.ts';
 import { createAvatureSource, readPage } from './avature.ts';

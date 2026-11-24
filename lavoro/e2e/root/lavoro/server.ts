@@ -224,6 +224,7 @@ const baseModule = createLavoroModule({
 
 export default defineModule({
   name: 'lavoro',
+  optional: baseModule.optional,
   config: baseModule.config,
   settingsSchema: profileSchema,
   migrations: baseModule.migrations,

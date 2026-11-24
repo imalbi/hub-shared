@@ -1,0 +1,86 @@
+{
+  "work": {
+    "INBOX": [
+      {
+        "id": "310",
+        "message-id": "offer@example.org",
+        "in-reply-to": [],
+        "flags": [],
+        "subject": "Offerta di colloquio",
+        "from": [{ "name": "Recruiter Example", "email": "recruiter@example.org" }],
+        "to": [{ "name": "Owner", "email": "owner@example.org" }],
+        "date": "2026-11-07T09:00:00Z",
+        "size": 1200,
+        "has-attachment": false
+      },
+      {
+        "id": "309",
+        "message-id": "news@example.org",
+        "in-reply-to": [],
+        "flags": [{ "raw": "\\Seen", "iana": "seen" }],
+        "subject": "Newsletter di prova",
+        "from": [{ "name": null, "email": "news@example.org" }],
+        "to": [{ "name": "Owner", "email": "owner@example.org" }],
+        "date": "2026-11-06T08:00:00Z",
+        "size": 800,
+        "has-attachment": false
+      },
+      {
+        "id": "308",
+        "message-id": "reply@example.org",
+        "in-reply-to": ["ask@example.org"],
+        "flags": [{ "raw": "\\Flagged", "iana": "flagged" }],
+        "subject": "Re: Domanda sul ruolo",
+        "from": [{ "name": "Carla Sample", "email": "carla@example.org" }],
+        "to": [{ "name": "Owner", "email": "owner@example.org" }],
+        "date": "2026-11-05T15:00:00Z",
+        "size": 900,
+        "has-attachment": false
+      }
+    ],
+    "sent": [
+      {
+        "id": "42",
+        "message-id": "ask@example.org",
+        "in-reply-to": [],
+        "flags": [{ "raw": "\\Seen", "iana": "seen" }],
+        "subject": "Domanda sul ruolo",
+        "from": [{ "name": "Owner", "email": "owner@example.org" }],
+        "to": [{ "name": "Carla Sample", "email": "carla@example.org" }],
+        "date": "2026-11-04T10:00:00Z",
+        "size": 700,
+        "has-attachment": false
+      },
+      {
+        "id": "43",
+        "message-id": "followup@example.org",
+        "in-reply-to": ["offer@example.org"],
+        "flags": [{ "raw": "\\Seen", "iana": "seen" }],
+        "subject": "Re: Offerta di colloquio",
+        "from": [{ "name": "Owner", "email": "owner@example.org" }],
+        "to": [{ "name": "Recruiter Example", "email": "recruiter@example.org" }],
+        "date": "2026-11-07T14:00:00Z",
+        "size": 600,
+        "has-attachment": false
+      }
+    ],
+    "archive": []
+  },
+  "personal": {
+    "INBOX": [
+      {
+        "id": "88",
+        "message-id": "club@example.net",
+        "in-reply-to": [],
+        "flags": [],
+        "subject": "Iscrizione al club",
+        "from": [{ "name": "Club Example", "email": "club@example.net" }],
+        "to": [{ "name": "Owner", "email": "owner@example.net" }],
+        "date": "2026-11-06T18:00:00Z",
+        "size": 500,
+        "has-attachment": true
+      }
+    ],
+    "archive": []
+  }
+}

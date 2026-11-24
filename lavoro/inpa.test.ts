@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseHTML } from '../../apps/server/src/core/module-html.ts';
+import { parseHTML } from 'linkedom';
 import { item, ok, page, serveInpa } from './fake-inpa.ts';
 import { capturingLog, silentLog, testProfile } from './harness.ts';
 import { createInpaSource, placeOf, readItem, townOf } from './inpa.ts';

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseHTML } from '../../apps/server/src/core/module-html.ts';
+import { parseHTML } from 'linkedom';
 import { algoliaPage, bootstrapHtml, hit } from './fake-synergie.ts';
 import { parseAlgoliaConfig, readPage } from './synergie.ts';
 

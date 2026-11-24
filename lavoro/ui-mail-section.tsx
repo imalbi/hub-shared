@@ -3,17 +3,19 @@ import { EmptyState } from '../../apps/web/src/components/ui/empty-state.tsx';
 import { PlusIcon, XIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { MailThreadAnswer } from '../../apps/server/src/core/capabilities.ts';
+import { useIsOn } from '../../apps/web/src/lib/module-enabled.ts';
 import { copy } from './copy.ts';
 import { ConnectMail } from './ui-mail-connect.tsx';
 import { linksKey, lavoroMailClient, useApplicationLinks, useLinkedThreads, useMailAccounts } from './ui-mail-data.ts';
 import { MailThread } from './ui-mail-thread.tsx';
 import type { JobRow } from './server.ts';
-import type { ThreadAnswer } from '../../apps/server/src/modules/mail/router.ts';
 
 export function MailSection({ job }: { job: JobRow }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState(false);
   const [address, setAddress] = useState('');
+  const mailOn = useIsOn()('mail');
   const accounts = useMailAccounts();
   const links = useApplicationLinks(job.key);
   const cache = useQueryClient();
@@ -42,7 +44,7 @@ export function MailSection({ job }: { job: JobRow }) {
       setError(true);
     }
   }
-  const enabled = accounts.isSuccess && accounts.data.length > 0;
+  const enabled = mailOn && accounts.isSuccess && accounts.data.length > 0;
   const threads = useLinkedThreads(links.data ?? [], enabled && links.isSuccess);
   useEffect(() => {
     const resolved = (threads.data ?? []).filter((answer) => answer.resolvedMessageId);
@@ -60,7 +62,7 @@ export function MailSection({ job }: { job: JobRow }) {
       .then(() => cache.invalidateQueries({ queryKey: linksKey }))
       .catch(() => setError(true));
   }, [threads.data, job.key, cache]);
-  const grouped = new Map<string, ThreadAnswer[]>();
+  const grouped = new Map<string, MailThreadAnswer[]>();
   for (const answer of threads.data ?? []) {
     const key = JSON.stringify([answer.account, answer.thread?.key ?? answer.messageId]);
     const group = grouped.get(key) ?? [];
@@ -143,7 +145,9 @@ export function MailSection({ job }: { job: JobRow }) {
           </>
         )}
       </div>
-      {accounts.isError || (accounts.isSuccess && !enabled) ? <p>{copy.candidature.mail.unavailable}</p> : null}
+      {!mailOn || accounts.isError || (accounts.isSuccess && !enabled) ? (
+        <p>{copy.candidature.mail.unavailable}</p>
+      ) : null}
       {enabled && links.isError && <p>{copy.candidature.mail.unknown}</p>}
       {enabled && links.isSuccess && links.data.length === 0 && <EmptyState title={copy.candidature.mail.empty} />}
       {enabled &&
@@ -174,7 +178,7 @@ export function MailSection({ job }: { job: JobRow }) {
           </ul>
         ))}
       {error && <p>{copy.candidature.mail.error}</p>}
-      {enabled && job.application && (
+      {enabled && accounts.data && job.application && (
         <ConnectMail
           open={open}
           setOpen={setOpen}

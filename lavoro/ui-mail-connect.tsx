@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { Dialog } from '../../apps/web/src/components/ui/dialog.tsx';
 import { SearchInput } from '../../apps/web/src/components/ui/search-input.tsx';
-import { useMailTRPC } from '../../apps/web/src/modules/mail/use-mail.ts';
+import type { MailMessage } from '../../apps/server/src/core/capabilities.ts';
 import { copy } from './copy.ts';
-import { linksKey, lavoroMailClient } from './ui-mail-data.ts';
-import type { MailMessage } from '../../apps/server/src/modules/mail/himalaya.ts';
+import { linksKey, lavoroMailClient, useMailTRPC } from './ui-mail-data.ts';
 
 export function ConnectMail({
   open,

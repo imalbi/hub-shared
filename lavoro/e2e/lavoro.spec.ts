@@ -1941,7 +1941,7 @@ test('mail suggestions, explicit links, reading and waiting segments', async ({ 
       `/trpc/lavoro.links.list?input=${encodeURIComponent(JSON.stringify({ key: 'fake-interview-key' }))}`,
     );
     expect((await before.json()).result.data).toHaveLength(0);
-    const calls: string[][] = (await (await pc.get(`${SERVER_URL}/__fake/mail`)).json()).calls;
+    const calls: string[][] = (await (await pc.get('/m/mail/fake-calls')).json()).calls;
     for (const mailbox of ['INBOX', 'sent'])
       for (const field of ['from', 'subject']) {
         expect(
@@ -1987,7 +1987,7 @@ test('mail suggestions, explicit links, reading and waiting segments', async ({ 
     expect(Math.abs(readBox.y - messageBox.y)).toBeLessThanOrEqual(8);
     expect(Math.abs(readBox.x - messageBox.x)).toBeLessThanOrEqual(8);
     expect(Math.abs(readBox.width - messageBox.width)).toBeLessThanOrEqual(8);
-    const afterRead: string[][] = (await (await pc.get(`${SERVER_URL}/__fake/mail`)).json()).calls;
+    const afterRead: string[][] = (await (await pc.get('/m/mail/fake-calls')).json()).calls;
     expect(afterRead.some((args) => args.includes('read') && args.includes('310'))).toBeTruthy();
     expect(afterRead.flat()).not.toContain('--seen');
     await detail.getByRole('button', { name: 'Chiudi' }).click();
@@ -2029,7 +2029,7 @@ test('mail disabled hides segments and explains availability in the panel', asyn
     await page.goto('/desk/ricerca?tab=candidature&candidature=all');
     await expect(page.getByRole('button', { name: /In colloquio/ })).toBeVisible();
     await page.getByRole('heading', { name: 'Principal Engineer' }).click();
-    await expect(page.getByText('Posta non è configurata.')).toBeVisible();
+    await expect(page.getByText(/Impostazioni -> Catalogo/)).toBeVisible();
   } finally {
     await toggle(true);
     await expect
@@ -2049,7 +2049,7 @@ test('an absent mail configuration hides mail segments and explains the panel st
     await page.goto('/desk/ricerca?tab=candidature&candidature=all');
     await expect(page.getByRole('button', { name: /In colloquio/ })).toBeVisible();
     await page.getByRole('heading', { name: 'Principal Engineer' }).click();
-    await expect(page.getByText('Posta non è configurata.')).toBeVisible();
+    await expect(page.getByText(/Impostazioni -> Catalogo/)).toBeVisible();
   } finally {
     await app.close();
   }

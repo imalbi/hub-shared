@@ -152,6 +152,7 @@ async function serve(
     skillsDir?: string;
     mcpClient?: 'claude' | 'codex';
     mailAccounts?: boolean;
+    mailModule?: boolean;
   } = {},
 ) {
   const dir = await mkdtemp(join(tmpdir(), 'hub-lavoro-'));
@@ -163,6 +164,17 @@ async function serve(
      import { wiring } from ${JSON.stringify(here('test-wiring.ts'))};
      export default createLavoroModule(wiring);`,
   );
+  const withMail =
+    options.mailModule !== false && (options.mailAccounts || (isObject(profile) && 'mailCheck' in profile));
+  if (withMail) {
+    await mkdir(join(dir, 'mail'));
+    await writeFile(
+      join(dir, 'mail', 'server.ts'),
+      `import { createMailModule } from ${JSON.stringify(here('../mail/module.ts'))};
+       import { createFakeMailRun } from ${JSON.stringify(here('../mail/fake-himalaya.ts'))};
+       export default createMailModule({ run: createFakeMailRun() });`,
+    );
+  }
   const fake = createFakeClock();
   const catalog = (input: { query: { name: string } }) =>
     input.query.name === 'Web' ? [makeCard('indeed', 1), makeCard('indeed', 2)] : [makeCard('indeed', 3)];
@@ -189,7 +201,7 @@ async function serve(
       mcp: { ...emptyConfig.mcp, client: options.mcpClient ?? 'claude' },
       modules: {
         lavoro: profile,
-        ...(options.mailAccounts ? { mail: { accounts: [{ label: 'Work', account: 'work' }] } } : {}),
+        ...(withMail ? { mail: { accounts: [{ label: 'Work', account: 'work' }] } } : {}),
       },
     },
   });
@@ -3603,6 +3615,31 @@ void test('mail check: no accounts means off, and the mail action answers starte
   const { app, post } = await serve(t, { ...testProfile(), mailCheck: { accounts: [] } });
   assert.equal((await app.inject('/trpc/lavoro.mailCheck.info')).json().result.data.enabled, false);
   assert.equal((await post('mailCheck.run')).json().result.data.started, false);
+});
+
+void test('without mail capability, lavoro initializes and mail procedures degrade cleanly', async (t) => {
+  const { app, fake, post } = await serve(
+    t,
+    { ...testProfile(), mailCheck: { accounts: ['work'], auto: true } },
+    { mailModule: false },
+  );
+  await post('raccogli');
+  await fake.drain();
+  const [first] = (await app.inject('/trpc/lavoro.list')).json().result.data.jobs;
+  await post('setApplication', { key: first.key, appliedAt: fake.clock.now() });
+
+  assert.equal((await app.inject('/trpc/lavoro.mailCheck.info')).json().result.data.enabled, false);
+  assert.equal((await post('mailCheck.run')).json().result.data.started, false);
+  assert.deepEqual(
+    (
+      await app.inject(
+        `/trpc/lavoro.addresses.suggestions?input=${encodeURIComponent(JSON.stringify({ key: first.key }))}`,
+      )
+    ).json().result.data,
+    [],
+  );
+  const linked = await post('links.add', { key: first.key, account: 'work', messageId: 'offer@example.org' });
+  assert.equal(linked.statusCode, 200);
 });
 
 void test('mail check: proposals and actions are for the PC only, never a paired device', async (t) => {

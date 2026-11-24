@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import type { Run } from '../../apps/server/src/core/exec.ts';
+import type { MailCapability, MailThreadEntry } from '../../apps/server/src/core/module.ts';
 import { createLlmGate } from '../../apps/server/src/core/llm-gate.ts';
 import { openDatabase } from '../../apps/server/src/db/index.ts';
-import { createFakeDesktop } from '../../apps/server/src/testing/fake-desktop.ts';
 import type { Profile } from './config.ts';
 import {
   canAutoLinkSender,
@@ -154,19 +153,109 @@ void test('decide links only a confident, evidenced match and suggests the rest'
   });
 });
 
-// The fake desktop's `work` account: inbox 310 (an invitation, newest), 309 (a newsletter), 308 (a reply to our sent 42);
-// sent 43 answers 310. Bodies are overridden per test so they can name a company or a date.
-function desktopWithBodies(bodies: Record<string, string>, calls: string[][] = []): Run {
-  const desktop = createFakeDesktop({ mail: calls });
-  return async (bin, args, options) => {
-    const index = args.indexOf('read');
-    const id = args.at(-1);
-    if (bin === 'himalaya' && args.includes('message') && index >= 0 && id && bodies[id] !== undefined) {
-      calls.push([...args]);
-      const parts = [{ headers: [], is_encoding_problem: false, body: { Text: bodies[id] } }];
-      return { stdout: JSON.stringify({ parts, text_body: [0], html_body: [], attachments: [] }), stderr: '', code: 0 };
+// Synthetic `work` mailbox matching the shared fake mail fixture: inbox 310 (invitation), 309 (newsletter), 308 (reply
+// to sent 42); sent 43 answers 310. Bodies and senders are overridden per test without spawning external commands.
+function fakeThreadOf(entries: readonly MailThreadEntry[], messageId: string) {
+  const start = entries.find((e) => e.messageId === messageId || e.id === messageId);
+  if (!start) return null;
+  const byId = new Map<string, MailThreadEntry>();
+  for (const e of entries) if (e.messageId) byId.set(e.messageId, e);
+  const group = new Set<MailThreadEntry>([start]);
+  let growing = true;
+  while (growing) {
+    growing = false;
+    for (const e of entries) {
+      if (group.has(e)) continue;
+      const connected =
+        e.inReplyTo.some((id) => [...group].some((g) => g.messageId === id)) ||
+        [...group].some((g) => g.inReplyTo.includes(e.messageId ?? ''));
+      if (connected) {
+        group.add(e);
+        growing = true;
+      }
     }
-    return desktop(bin, args, options);
+  }
+  const messages = [...group].toSorted((a, b) => Date.parse(a.date ?? '') - Date.parse(b.date ?? ''));
+  const latest = messages.at(-1);
+  return {
+    messageId: start.messageId ?? start.id,
+    key: messages[0]?.messageId ?? start.id,
+    waiting: latest?.mailbox === 'sent',
+    messages,
+  };
+}
+
+function fakeMailCapability(
+  bodies: Record<string, string>,
+  calls: string[][] = [],
+  replaceSender?: string,
+): MailCapability {
+  const sender = (addr: string) => (replaceSender && addr === 'recruiter@example.org' ? replaceSender : addr);
+  const baseEntries: MailThreadEntry[] = [
+    {
+      mailbox: 'inbox',
+      id: '310',
+      messageId: 'offer@example.org',
+      inReplyTo: [],
+      subject: 'Offerta di colloquio',
+      date: '2026-11-07T09:00:00Z',
+      counterpart: sender('recruiter@example.org'),
+    },
+    {
+      mailbox: 'inbox',
+      id: '309',
+      messageId: 'news@example.org',
+      inReplyTo: [],
+      subject: 'Newsletter di prova',
+      date: '2026-11-06T12:00:00Z',
+      counterpart: 'news@example.org',
+    },
+    {
+      mailbox: 'inbox',
+      id: '308',
+      messageId: 'reply@example.org',
+      inReplyTo: ['sent42@example.org'],
+      subject: 'Re: Domanda sul ruolo',
+      date: '2026-11-05T15:00:00Z',
+      counterpart: 'carla@example.org',
+    },
+    {
+      mailbox: 'sent',
+      id: '43',
+      messageId: 'followup@example.org',
+      inReplyTo: ['offer@example.org'],
+      subject: 'Re: Offerta di colloquio',
+      date: '2026-11-07T14:00:00Z',
+      counterpart: sender('recruiter@example.org'),
+    },
+    {
+      mailbox: 'sent',
+      id: '42',
+      messageId: 'sent42@example.org',
+      inReplyTo: [],
+      subject: 'Domanda sul ruolo',
+      date: '2026-11-04T10:00:00Z',
+      counterpart: 'carla@example.org',
+    },
+  ];
+  const defaultBodies: Record<string, string> = {
+    '310': 'Buongiorno, vorremmo proporle un colloquio.',
+    '309': 'Novità settimanali.',
+    '308': 'Grazie della risposta.',
+    '43': 'Grazie mille, confermo.',
+    '42': 'Quali sono i prossimi passi?',
+  };
+  return {
+    accounts: () => [{ label: 'Work', account: 'work' }],
+    async listThreadEntries(account) {
+      calls.push(['listThreadEntries', account]);
+      return { entries: baseEntries, truncated: false };
+    },
+    async readMessageText(account, _mailbox, id) {
+      calls.push(['readMessageText', account, id]);
+      return bodies[id] ?? defaultBodies[id] ?? null;
+    },
+    threadOf: fakeThreadOf,
   };
 }
 
@@ -174,9 +263,10 @@ type Setup = {
   answers?: Record<string, Partial<MailAnswer> | 'invalid' | 'down'>;
   bodies?: Record<string, string>;
   config?: Partial<Profile['mailCheck']>;
+  sender?: string;
 };
 
-function setup({ answers = {}, bodies = {}, config = {} }: Setup = {}) {
+function setup({ answers = {}, bodies = {}, config = {}, sender }: Setup = {}) {
   const db = openDatabase(':memory:', migrations);
   const requests: { url: string; prompt: string }[] = [];
   const gateCalls: ({ counted?: boolean } | undefined)[] = [];
@@ -202,7 +292,7 @@ function setup({ answers = {}, bodies = {}, config = {} }: Setup = {}) {
   const { log, records } = capturingLog();
   const deps = {
     db,
-    run: desktopWithBodies(bodies, mailCalls),
+    mail: fakeMailCapability(bodies, mailCalls, sender),
     fetch: fetcher,
     gate: spyGate,
     log,
@@ -259,17 +349,16 @@ function addApplication(
 const links = (db: ReturnType<typeof setup>['db']) => db.select().from(jobMailLink).all();
 
 void test('a known sender links Rossi ASD even when the model answers none', async () => {
-  const s = setup({ bodies: { '310': 'Pedala propone una chiamata.' }, config: { maxPerRun: 1 } });
+  const s = setup({
+    bodies: { '310': 'Pedala propone una chiamata.' },
+    config: { maxPerRun: 1 },
+    sender: 'info@pedala.example', // guard-private: allow Synthetic fixture address
+  });
   addApplication(s.db, 'rossi', 'Rossi ASD');
   s.db
     .insert(applicationAddress)
     .values({ key: 'rossi', address: 'info@pedala.example', origin: 'sent', addedAt: new Date(now) }) // guard-private: allow Synthetic fixture address
     .run();
-  const desktop = s.deps.run;
-  s.deps.run = async (...args) => {
-    const result = await desktop(...args);
-    return { ...result, stdout: result.stdout.replaceAll('recruiter@example.org', 'info@pedala.example') }; // guard-private: allow Synthetic fixture address
-  };
   const result = await s.run();
   assert.equal(result.linked, 1);
   assert.equal(links(s.db)[0]?.key, 'rossi');
@@ -281,17 +370,13 @@ void test('a confident model match links when the corporate domain matches', asy
   const s = setup({
     answers: { 'Offerta di colloquio': { application: 'A1', confidence: 'alta' } },
     config: { maxPerRun: 1 },
+    sender: 'hr@acme.example', // guard-private: allow Synthetic fixture address
   });
   addApplication(s.db, 'acme', 'Acme');
   s.db
     .insert(applicationAddress)
     .values({ key: 'acme', address: 'jobs@acme.example', origin: 'manual', addedAt: new Date(now) }) // guard-private: allow Synthetic fixture address
     .run();
-  const desktop = s.deps.run;
-  s.deps.run = async (...args) => {
-    const result = await desktop(...args);
-    return { ...result, stdout: result.stdout.replaceAll('recruiter@example.org', 'hr@acme.example') }; // guard-private: allow Synthetic fixture address
-  };
   await s.run();
   assert.equal(links(s.db)[0]?.key, 'acme');
   assert.equal(links(s.db)[0]?.linkReason, 'model');
@@ -332,6 +417,7 @@ const statusOf = (db: ReturnType<typeof setup>['db'], key: string) =>
 void test('a confident model match with matching corporate domain and company links it without saving thread addresses', async () => {
   const s = setup({
     bodies: { '310': 'Per la posizione presso Acme Corp vorremmo incontrarla.' },
+    sender: 'hr@acme.example', // guard-private: allow Synthetic fixture address
     answers: {
       'Offerta di colloquio': {
         application: 'A1',
@@ -343,11 +429,6 @@ void test('a confident model match with matching corporate domain and company li
       },
     },
   });
-  const desktop = s.deps.run;
-  s.deps.run = async (...args) => {
-    const result = await desktop(...args);
-    return { ...result, stdout: result.stdout.replaceAll('recruiter@example.org', 'hr@acme.example') }; // guard-private: allow Synthetic fixture address
-  };
   addApplication(s.db, 'acme', 'Acme Corp');
   const result = await s.run();
   assert.equal(result.checked, 3);
@@ -376,6 +457,7 @@ void test('crafted alta mail from freemail or unknown domain naming company only
   for (const sender of senders) {
     const s = setup({
       bodies: { '310': 'Gentile candidato, Acme Corp chiede azione.' },
+      sender,
       answers: {
         'Offerta di colloquio': {
           application: 'A1',
@@ -389,11 +471,6 @@ void test('crafted alta mail from freemail or unknown domain naming company only
       },
       config: { maxPerRun: 1 },
     });
-    const desktop = s.deps.run;
-    s.deps.run = async (...args) => {
-      const result = await desktop(...args);
-      return { ...result, stdout: result.stdout.replaceAll('recruiter@example.org', sender) };
-    };
     addApplication(s.db, 'acme', 'Acme Corp');
     const result = await s.run();
     assert.equal(result.linked, 0, sender);
@@ -433,15 +510,11 @@ void test('an unsure match, and a confident one without the company in the mail,
 void test('a rejection proposes the status when sender domain is confirmed and the application keeps its status until confirmed', async () => {
   const s = setup({
     bodies: { '310': 'Gentile candidato, Acme Corp ha scelto un altro profilo.' },
+    sender: 'hr@acme.example', // guard-private: allow Synthetic fixture address
     answers: {
       'Offerta di colloquio': { application: 'A1', confidence: 'alta', kind: 'rifiuto', why: 'Rifiuto esplicito' },
     },
   });
-  const desktop = s.deps.run;
-  s.deps.run = async (...args) => {
-    const result = await desktop(...args);
-    return { ...result, stdout: result.stdout.replaceAll('recruiter@example.org', 'hr@acme.example') }; // guard-private: allow Synthetic fixture address
-  };
   addApplication(s.db, 'acme', 'Acme Corp');
   await s.run();
   assert.deepEqual(

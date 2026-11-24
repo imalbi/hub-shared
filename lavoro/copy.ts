@@ -515,7 +515,7 @@ export const copy = {
       acceptAddress: (address: string) => `Aggiungi indirizzo ${address}`,
       addressError: 'Impossibile aggiornare gli indirizzi.',
       disconnect: 'Scollega mail',
-      unavailable: 'Posta non è configurata.',
+      unavailable: 'Posta non è configurata. Attiva o installa il modulo in Impostazioni -> Catalogo.',
       loading: 'Caricamento delle conversazioni',
       unknown: 'Stato delle conversazioni non disponibile.',
       accountError: 'Account di posta non raggiungibile',

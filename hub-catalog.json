@@ -7,8 +7,19 @@
       "name": "lavoro",
       "title": "Lavoro",
       "description": "Ricerca annunci, candidature, colloqui e valutazione delle opportunità.",
+      "version": "1.1.0",
+      "path": "lavoro",
+      "optional": {
+        "mail": "Collega le email dei recruiter alle candidature e propone aggiornamenti automatici"
+      }
+    },
+    {
+      "name": "mail",
+      "title": "Posta",
+      "description": "Casella di posta con feed, thread, composizione e notifiche.",
       "version": "1.0.0",
-      "path": "lavoro"
+      "path": "mail",
+      "provides": ["mail"]
     }
   ]
 }

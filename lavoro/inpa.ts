@@ -1,5 +1,5 @@
 import { z } from '../../apps/server/src/core/module.ts';
-import { parseHTML } from '../../apps/server/src/core/module-html.ts';
+import { parseHTML } from 'linkedom';
 import { fetchBounded, readBoundedJson } from './bounded-fetch.ts';
 import { cleanHtml } from './clean-html.ts';
 import { desktopHeaders } from './desktop-headers.ts';

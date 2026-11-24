@@ -1,5 +1,5 @@
 import { z } from '../../apps/server/src/core/module.ts';
-import { parseHTML } from '../../apps/server/src/core/module-html.ts';
+import { parseHTML } from 'linkedom';
 import { fetchBounded, readBoundedText } from './bounded-fetch.ts';
 import { cleanHtml } from './clean-html.ts';
 import type { Card, SearchInput, SearchResult, Source, SourceContext } from './source.ts';
