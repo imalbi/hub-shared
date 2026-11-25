@@ -965,25 +965,23 @@ export function RicercaZonePage() {
           {
             id: 'candidature',
             label: copy.tab_candidature,
-            content:
-              data === null ? (
-                <LoadingSkeleton label={copy.widget.loading} rows={3} />
-              ) : (
-                <CandidaturePage
-                  jobs={allJobs}
-                  now={now}
-                  onOpenDetail={openDetail}
-                  mailCheck={lavoroState?.status === 'ready' ? lavoroState.mailCheck : null}
-                  onChanged={() => void fetchData()}
-                />
-              ),
+            content: (
+              <CandidaturePage
+                jobs={allJobs}
+                now={now}
+                onOpenDetail={openDetail}
+                mailCheck={lavoroState?.status === 'ready' ? lavoroState.mailCheck : null}
+                onChanged={() => void fetchData()}
+                loaded={data !== null}
+              />
+            ),
           },
           {
             id: 'statistiche',
             label: copy.tab_statistiche,
             content:
               data === null ? (
-                <LoadingSkeleton label={copy.widget.loading} rows={3} />
+                <LoadingSkeleton variant="centered" label={copy.widget.loading} />
               ) : (
                 <StatsPage jobs={allJobs} onChanged={() => void fetchData()} />
               ),
@@ -994,7 +992,7 @@ export function RicercaZonePage() {
             count: rules.length,
             content:
               data === null ? (
-                <LoadingSkeleton label={copy.widget.loading} rows={3} />
+                <LoadingSkeleton variant="centered" label={copy.widget.loading} />
               ) : (
                 <RulesPage
                   rules={rules}

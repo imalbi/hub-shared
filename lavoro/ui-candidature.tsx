@@ -11,6 +11,7 @@ import { Badge } from '../../apps/web/src/components/ui/badge.tsx';
 import { AnimatedItem, AnimatedRows } from '../../apps/web/src/components/animated-list.tsx';
 import { ButtonGroup } from '../../apps/web/src/components/ui/button-group.tsx';
 import { EmptyState } from '../../apps/web/src/components/ui/empty-state.tsx';
+import { LoadingSkeleton } from '../../apps/web/src/components/ui/loading-skeleton.tsx';
 import { NumberRoll } from '../../apps/web/src/components/ui/number-roll.tsx';
 import { PillSelect } from '../../apps/web/src/components/ui/pill-select.tsx';
 import { SearchInput } from '../../apps/web/src/components/ui/search-input.tsx';
@@ -87,12 +88,14 @@ export function CandidaturePage({
   onOpenDetail,
   mailCheck,
   onChanged,
+  loaded = true,
 }: {
   jobs: JobRow[];
   now: number;
   onOpenDetail: (key: string) => void;
   mailCheck: MailCheckState | null;
   onChanged: () => void;
+  loaded?: boolean;
 }) {
   const navigate = useNavigate();
   const surface = React.useContext(SurfaceScroller);
@@ -309,7 +312,9 @@ export function CandidaturePage({
       {/* Content Area */}
       <div key={`${segment}-${viewMode}`} className="pb-xl">
         <MailProposals check={mailCheck} onChanged={onChanged} />
-        {sortedJobs.length === 0 ? (
+        {!loaded ? (
+          <LoadingSkeleton variant="centered" label={copy.widget.loading} />
+        ) : sortedJobs.length === 0 ? (
           <EmptyState
             title={
               searchQuery || status
