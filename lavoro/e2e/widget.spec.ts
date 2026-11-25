@@ -231,6 +231,8 @@ test('D2: Grande Raccogli starts a live collection shown in the activity ball an
   const today = cell(page, 'today');
   await expect(widget.getByRole('button', { name: 'Raccogli' })).toBeVisible();
   await expect(today).toBeVisible();
+  // Oggi and Lavoro can mount their summary observers in separate startup batches.
+  await page.waitForLoadState('networkidle');
 
   const settledSummaryCount = summaryQueries;
   await page.waitForTimeout(1500);
