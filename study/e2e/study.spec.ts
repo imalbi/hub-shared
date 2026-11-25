@@ -400,3 +400,31 @@ test('the Studio tab bar names what each tab holds, and an old Materie link stil
   await page.goto(`${PC_URL}/desk/studio?tab=piani`);
   await expect(page.getByRole('tab', { name: 'Materie', exact: true })).toHaveAttribute('aria-selected', 'true');
 });
+
+test('revisiting a clean note adopts another client text before the next edit', async ({ page, pc }) => {
+  const inbox = join(RUN_TMP, 'study', 'in-arrivo');
+  await mkdir(inbox, { recursive: true });
+  await copyFile(new URL('../fixtures/example.json', import.meta.url), join(inbox, 'note.json'));
+  expect((await pc.post('/trpc/study.activate', { data: { name: 'note.json' } })).ok()).toBe(true);
+  const db = new DatabaseSync(join(RUN_TMP, 'modules', 'study.db'));
+  db.prepare("DELETE FROM progress WHERE plan_id IN ('example', '*')").run();
+  db.prepare("DELETE FROM preferences WHERE plan_id = '*'").run();
+  db.close();
+  await page.goto(`${PC_URL}/desk/studio`);
+  await expect(page.getByRole('heading', { name: 'La foglia' })).toBeVisible();
+  const note = page.getByRole('textbox', { name: 'Note' });
+  await note.fill('Prima nota');
+  await note.blur();
+  await expect(page.getByText('Salvato')).toBeVisible();
+  expect((await pc.post('/trpc/study.setNote', { data: { key: 'example/A01', text: 'Da altro client' } })).ok()).toBe(
+    true,
+  );
+  await page.getByRole('tab', { name: 'Piano', exact: true }).click();
+  await page.getByRole('tab', { name: 'Oggi', exact: true }).click();
+  await expect(note).toHaveValue('Da altro client');
+  await note.fill('Da altro client, con aggiunta');
+  await note.blur();
+  await expect(page.getByText('Salvato')).toBeVisible();
+  await page.reload();
+  await expect(note).toHaveValue('Da altro client, con aggiunta');
+});

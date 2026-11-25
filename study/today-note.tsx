@@ -3,13 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { m } from './copy.ts';
 import { useStudyTRPC } from './use-study.ts';
 
-type Draft = { text: string; saved: string; pending: boolean; failed: boolean; timer?: ReturnType<typeof setTimeout> };
-const drafts = new Map<string, Draft>();
-function getDraft(key: string, initial: string): Draft {
-  const draft = drafts.get(key) ?? { text: initial, saved: initial, pending: false, failed: false };
-  drafts.set(key, draft);
-  return draft;
-}
+import { getDraft } from './today-note-draft.ts';
 
 export function TodayNote({ dayKey, initial }: { dayKey: string; initial: string }) {
   const trpc = useStudyTRPC();
