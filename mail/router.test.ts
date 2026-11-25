@@ -494,7 +494,7 @@ void test('refreshing mail pushes unread counts on onState and anonymizes paired
   const pcCaller = router.createCaller({ ...baseCtx, client: { kind: 'loopback' } });
   const phoneCaller = router.createCaller({
     ...baseCtx,
-    client: { kind: 'device', deviceId: 1 },
+    client: { kind: 'device', deviceId: 1, expiresAt: Date.now() + 86_400_000 },
   });
   const pcSub = (await pcCaller.onState(undefined))[Symbol.asyncIterator]();
   const phoneSub = (await phoneCaller.onState(undefined))[Symbol.asyncIterator]();
