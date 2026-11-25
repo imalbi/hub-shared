@@ -1,4 +1,5 @@
 import { copy } from './copy.ts';
+import { escapeRegex } from './match.ts';
 
 const KEEP_UPPERCASE = new Set([
   'IT',
@@ -104,7 +105,7 @@ export function splitMarked(text: string, terms: readonly MarkTerm[]): MarkedPar
   }
   if (!kinds.size || !text) return [{ text, mark: null }];
   const words = [...kinds.keys()].toSorted((a, b) => b.length - a.length);
-  const pattern = new RegExp(`(${words.map((t) => t.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}_])(${words.map(escapeRegex).join('|')})(?![\\p{L}\\p{N}_])`, 'giu');
   return text
     .split(pattern)
     .filter((part) => part !== '')

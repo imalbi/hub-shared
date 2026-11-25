@@ -335,3 +335,33 @@ void test('extraLocations widen the places for Stabile postings only', () => {
   assert.equal(stableScorer.passesLocation(clerk({ company: 'Acme', location: 'Examplia West, Germany' })), false);
   assert.equal(stableScorer.passesLocation(clerk({ location: 'Examplia West, Germany' })), true);
 });
+
+void test('glued CamelCase title tokens match split keywords without false-positives on weighted compounds', () => {
+  const custom = profileSchema.parse(inventedProfile());
+  custom.weights.title = {
+    pcb: 3,
+    junior: 3,
+    javascript: 3,
+    java: 4,
+    sveltekit: 5,
+    svelte: 6,
+    frontend: 5,
+    'front end': 5,
+    'devops engineer': 2,
+    sales: -8,
+  };
+  const customScorer = createScorer(custom);
+
+  const texa = customScorer.scoreTitle('PCB DesignerJunior');
+  assert.equal(texa.score, 6);
+  assert.deepEqual(texa.reasons, ['pcb:+3', 'junior:+3']);
+
+  const glued = customScorer.scoreTitle('PCBDesigner');
+  assert.equal(glued.score, 3);
+  assert.deepEqual(glued.reasons, ['pcb:+3']);
+
+  assert.deepEqual(customScorer.scoreTitle('JavaScript Developer').reasons, ['javascript:+3']);
+  assert.deepEqual(customScorer.scoreTitle('SvelteKit Developer').reasons, ['sveltekit:+5']);
+  assert.deepEqual(customScorer.scoreTitle('FrontEnd Developer').reasons, ['frontend:+5']);
+  assert.deepEqual(customScorer.scoreTitle('DevOps Engineer').reasons, ['devops engineer:+2']);
+});

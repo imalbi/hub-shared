@@ -10,7 +10,9 @@ function cleanCurrency(val: string): string {
 }
 
 function normalizeNum(val: string): string {
-  let cleaned = cleanCurrency(val).replace(/[,.]00$/, '');
+  let cleaned = cleanCurrency(val)
+    .replace(/[,.]00$/, '')
+    .replace(/(\d)\s+k(\+?)$/i, '$1k$2');
   // English thousands separator with comma e.g. 25,500 or 65,800
   if (/^\d{1,3},\d{3}$/.test(cleaned)) {
     cleaned = cleaned.replace(',', '.');
@@ -22,6 +24,10 @@ function normalizeNum(val: string): string {
   // Decimal cents e.g. 33.058,74 or 36.906,87 -> drop cents to keep base integer 33.058
   if (/^\d{1,3}(?:\.\d{3})+,\d{1,2}$/.test(cleaned)) {
     cleaned = cleaned.replace(/,\d{1,2}$/, '');
+  }
+  // Plain 5-6 digit integer e.g. 35000 -> 35.000
+  if (/^\d{5,6}$/.test(cleaned)) {
+    cleaned = cleaned.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   }
   if (/^\d{2}(?:[.,]\d+)?k\+?$/i.test(cleaned)) {
     return cleaned.toLowerCase().replace(',', '.');
@@ -72,7 +78,12 @@ function formatMonthlyVal(num: number): string {
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
-export function extractSalary(raw: string | null | undefined): string | null {
+export type SalaryMatch = {
+  formatted: string;
+  rawTokens: string[];
+};
+
+export function extractSalaryMatch(raw: string | null | undefined): SalaryMatch | null {
   if (!raw) return null;
   const text = decodeHtml(raw);
 
@@ -80,38 +91,41 @@ export function extractSalary(raw: string | null | undefined): string | null {
   const numToken =
     '(?:€|(?:euro|eur)\\b)?\\s*(?:\\d{1,3}(?:[.,]\\d{3})+(?:[.,]\\d{2})?|\\d{3,5}(?:[.,]\\d{2})?|\\d{1,3}(?:[.,]\\d{2})?)';
   const monthlyRange = new RegExp(
-    `\\b(?:retribuzione|stipendio|compenso)?\\s*[:=-]?\\s*(?:\\b(?:di|da|tra|circa)\\b\\s*)*(${numToken})\\s*(?:[-–]|fino\\s+a|a)\\s*(${numToken})\\s*(?:€|(?:euro|eur)\\b)?\\s*(?:\\/\\s*(?:mese|m)|al\\s+mese|mensili)\\b`,
+    `\\b(?:retribuzione|stipendio|compenso)?\\s*[:=-]?\\s*(?:\\b(?:di|da|tra|circa)\\b\\s*)*(${numToken})\\s*(?:[-–]|fino\\s+a|a)\\s*(${numToken})\\s*(?:€|(?:euro|eur)\\b)?\\s*(?:\\/\\s*(?:mese|m)|al\\s+mese|mensil[ei])\\b`,
     'i',
   ).exec(text);
   if (monthlyRange && monthlyRange[1] && monthlyRange[2]) {
     const from = parseMonthlyVal(monthlyRange[1]);
     const to = parseMonthlyVal(monthlyRange[2]);
     if (from !== null && to !== null) {
-      return `${formatMonthlyVal(from)} - ${formatMonthlyVal(to)} €/m`;
+      return {
+        formatted: `${formatMonthlyVal(from)} - ${formatMonthlyVal(to)} €/m`,
+        rawTokens: [monthlyRange[1].trim(), monthlyRange[2].trim()],
+      };
     }
   }
 
   const monthlySingle = new RegExp(
-    `\\b(?:retribuzione|stipendio|compenso)?\\s*(?:mensile)?\\s*[:=-]?\\s*(?:\\b(?:di|da|tra|circa)\\b\\s*)*(${numToken})\\s*(?:€|(?:euro|eur)\\b)?\\s*(?:\\/\\s*(?:mese|m)|al\\s+mese|mensili)\\b`,
+    `\\b(?:retribuzione|stipendio|compenso)?\\s*(?:mensile)?\\s*[:=-]?\\s*(?:\\b(?:di|da|tra|circa)\\b\\s*)*(${numToken})\\s*(?:€|(?:euro|eur)\\b)?\\s*(?:\\/\\s*(?:mese|m)|al\\s+mese|mensil[ei])\\b`,
     'i',
   ).exec(text);
   if (monthlySingle && monthlySingle[1]) {
     const val = parseMonthlyVal(monthlySingle[1]);
     if (val !== null) {
-      return `${formatMonthlyVal(val)} €/m`;
+      return { formatted: `${formatMonthlyVal(val)} €/m`, rawTokens: [monthlySingle[1].trim()] };
     }
   }
 
   // 2. CCNL metalmeccanico / collective agreement level ranges (e.g. Accenture: B2 33.058,74€ e 50.500€, B3 36.906,87 € e 65,800€)
   // or seniority levels (e.g. Junior: €28,000 – €34,000). When multiple levels are present, pick the lowest entry level band.
-  const generalNumToken =
-    '(?:€|(?:euro|eur)\\b)?\\s*\\d{1,3}(?:[.,]\\d{3})*(?:[.,]\\d+)?\\s*k?\\+?(?:\\s*(?:€|(?:euro|eur)\\b))?';
+  const numCore = '(?:\\d{1,3}(?:[.,]\\d{3})+(?:[.,]\\d+)?|\\d{4,6}(?:[.,]\\d{1,2})?|\\d{1,3}(?:[.,]\\d+)?\\s*k\\+?)';
+  const generalNumToken = `(?:€|(?:euro|eur)\\b)?\\s*${numCore}\\+?(?:\\s*(?:€|(?:euro|eur)\\b))?`;
   const ccnlRegex = new RegExp(
     `\\b([A-Z]\\d{1,2}|[1-9]°?|Junior|Middle|Senior|Entry[\\s-]level)[:\\s]+(${generalNumToken})\\s*(?:[-–/]|fino\\s+a|a(?:\\s+i)?|ed?(?:\\s+i)?|e|to)\\s*(${generalNumToken})`,
     'gi',
   );
   let ccnlMatch: RegExpExecArray | null;
-  const ccnlCandidates: Array<{ fromStr: string; toStr: string; minVal: number }> = [];
+  const ccnlCandidates: Array<{ fromStr: string; toStr: string; rawFrom: string; rawTo: string; minVal: number }> = [];
   while ((ccnlMatch = ccnlRegex.exec(text)) !== null) {
     // A band needs a currency, a k or a thousands separator: "Junior 20 e 25 anni" is an age, not a salary.
     const looksLikeMoney = (v: string) => /€|\beur|k\b|\d[.,]\d{3}/i.test(v);
@@ -119,24 +133,34 @@ export function extractSalary(raw: string | null | undefined): string | null {
       const from = normalizeNum(ccnlMatch[2]);
       const to = normalizeNum(ccnlMatch[3]);
       if (isValidSalary(from) && isValidSalary(to)) {
-        ccnlCandidates.push({ fromStr: from, toStr: to, minVal: parseSalaryNumber(from) });
+        ccnlCandidates.push({
+          fromStr: from,
+          toStr: to,
+          rawFrom: ccnlMatch[2].trim(),
+          rawTo: ccnlMatch[3].trim(),
+          minVal: parseSalaryNumber(from),
+        });
       }
     }
   }
   if (ccnlCandidates.length > 0) {
     ccnlCandidates.sort((a, b) => a.minVal - b.minVal);
-    return `${ccnlCandidates[0].fromStr} - ${ccnlCandidates[0].toStr} €`;
+    return {
+      formatted: `${ccnlCandidates[0].fromStr} - ${ccnlCandidates[0].toStr} €`,
+      rawTokens: [ccnlCandidates[0].rawFrom, ccnlCandidates[0].rawTo],
+    };
   }
 
   // 2b. Workday / ATS format: "Minimum Base Salary: 28,000.00 EUR \n Maximum Base Salary: 36,000.00 EUR"
-  const minMaxATS = /minimum\s+base\s+salary\s*:\s*([^\n\r]+)[\s\S]*?maximum\s+base\s+salary\s*:\s*([^\n\r]+)/i.exec(
-    text,
-  );
+  const minMaxATS = new RegExp(
+    `minimum\\s+base\\s+salary\\s*:\\s*(${generalNumToken})[\\s\\S]*?maximum\\s+base\\s+salary\\s*:\\s*(${generalNumToken})`,
+    'i',
+  ).exec(text);
   if (minMaxATS && minMaxATS[1] && minMaxATS[2]) {
     const from = normalizeNum(minMaxATS[1]);
     const to = normalizeNum(minMaxATS[2]);
     if (isValidSalary(from) && isValidSalary(to)) {
-      return `${from} - ${to} €`;
+      return { formatted: `${from} - ${to} €`, rawTokens: [minMaxATS[1].trim(), minMaxATS[2].trim()] };
     }
   }
 
@@ -149,7 +173,10 @@ export function extractSalary(raw: string | null | undefined): string | null {
     const from = normalizeNum(amountBeforeKeyword[1]);
     const to = normalizeNum(amountBeforeKeyword[2]);
     if (isValidSalary(from) && isValidSalary(to)) {
-      return `${from} - ${to} €`;
+      return {
+        formatted: `${from} - ${to} €`,
+        rawTokens: [amountBeforeKeyword[1].trim(), amountBeforeKeyword[2].trim()],
+      };
     }
   }
 
@@ -162,50 +189,56 @@ export function extractSalary(raw: string | null | undefined): string | null {
     const from = normalizeNum(startsRising[1]);
     const to = normalizeNum(startsRising[2]);
     if (isValidSalary(from) && isValidSalary(to)) {
-      return `${from} - ${to} €`;
+      return { formatted: `${from} - ${to} €`, rawTokens: [startsRising[1].trim(), startsRising[2].trim()] };
     }
   }
 
-  // 3c. Starting from: "retribuzione a partire da 24.000,00 €", "a partire da 24.000 €"
-  const startingFrom =
-    /\b(?:retribuzione|stipendio|ral|compenso|salary|pay)?\s*a\s+partire\s+da\s*(${generalNumToken})/i.exec(text);
+  // 3c. Starting from / starting at: "retribuzione a partire da 24.000,00 €", "Gross annual salary (RAL): Starting at €42,000"
+  const startingFrom = new RegExp(
+    `\\b(?:ral|retribuzione(?:\\s+annua)?(?:\\s+lorda)?|stipendio|compenso|(?:gross\\s+)?annual\\s+salary|salary(?:\\s+(?:range|band))?|pay)?(?:\\s*\\([^)\\d]*\\))?\\s*[:=-]?\\s*(?:a\\s+partire\\s+da|starting\\s+(?:at|from)|starts?\\s+(?:at|from))\\s*(?:of\\s+)?(${generalNumToken})`,
+    'i',
+  ).exec(text);
   if (startingFrom && startingFrom[1]) {
     const val = normalizeNum(startingFrom[1]);
     if (isValidSalary(val)) {
-      return `${val}+ €`;
+      return { formatted: `${val} €`, rawTokens: [startingFrom[1].trim()] };
     }
   }
 
   // 4. Explicit keyword: RAL / retribuzione / pay range / salary / annual salary / gross annual salary
   // Iterate through all keyword occurrences so non-numeric intro sentences do not shadow the real salary.
-  const keywordPattern =
-    /\b(?:ral|retribuzione(?:\s+annua)?(?:\s+lorda)?|stipendio|compenso|pay(?:\s+(?:range|band))?|salary(?:\s+(?:range|band))?|(?:gross\s+)?annual\s+salary|base\s+pay|compensation)\b(?:\s*\([^)]*\))?[^:;\n\d]{0,80}?[:=-]?\s*(?:di|da|tra(?:\s+i)?|from)?\s*(?:circa|around)?\s*((?:€|(?:euro|eur)\b)?\s*\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\s*k?\+?(?:\s*(?:€|(?:euro|eur)\b))?(?:\s*(?:[-–/]|fino\s+a|a(?:\s+i)?|ed?(?:\s+i)?|e|to)\s*(?:€|(?:euro|eur)\b)?\s*\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\s*k?\+?)?\s*(?:€|(?:euro|eur)\b|\/anno|all'anno|annui|annuali|annual\s+salary)?)/gi;
+  const kwAmount =
+    '(?:€|(?:euro|eur)\\b)?\\s*(?:\\d{1,3}(?:[.,]\\d{3})+(?:[.,]\\d+)?|\\d{4,6}(?:[.,]\\d{1,2})?|\\d{1,3}(?:[.,]\\d+)?)(?:\\s*k)?\\+?(?:\\s*(?:€|(?:euro|eur)\\b))?';
+  const keywordPattern = new RegExp(
+    `\\b(?:ral|retribuzione(?:\\s+annua)?(?:\\s+lorda)?|stipendio|compenso|pay(?:\\s+(?:range|band))?|salary(?:\\s+(?:range|band))?|(?:gross\\s+)?annual\\s+salary|base\\s+pay|compensation)\\b(?:\\s*\\([^)\\d]*\\))?[^:;\\n\\d]{0,80}?[:=-]?\\s*\\(?\\s*(?:di|da|tra(?:\\s+i)?|from|fino\\s+ai?|up\\s+to|max|minimo|starting\\s+(?:at|from)|starts?\\s+(?:at|from))?\\s*(?:circa|around)?\\s*(${kwAmount}(?:\\s*(?:[-–/]|fino\\s+a|a(?:\\s+i)?|ed?(?:\\s+i)?|e|to)\\s*${kwAmount})?\\s*(?:€|(?:euro|eur)\\b|\\/anno|all'anno|annuale|annui|annuali|annual\\s+salary)?)`,
+    'gi',
+  );
 
   let kwMatch: RegExpExecArray | null;
   while ((kwMatch = keywordPattern.exec(text)) !== null) {
     if (kwMatch[1]) {
       const rawVal = kwMatch[1].trim();
-      // Range: "28 - 32k", "28.000 - 32.000 €", "26-29k", "22,5-51k", "Euro 23.258 ed Euro 28.816", "EUR 27.550 - 30.000", "€25,500 to €38,500"
-      const range =
-        /^((?:€|(?:euro|eur)\b)?\s*\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\s*k?\+?(?:\s*(?:€|(?:euro|eur)\b))?)\s*(?:[-–/]|fino\s+a|a(?:\s+i)?|ed?(?:\s+i)?|e|to)\s*((?:€|(?:euro|eur)\b)?\s*\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\s*k?\+?)\s*(?:€|(?:euro|eur)\b|\/anno|all'anno|annual\s+salary)?$/i.exec(
-          rawVal,
-        );
+      // Range: "28 - 32k", "28.000 - 32.000 €", "€ 35000 - € 45000 Annuale", "Euro 23.258 ed Euro 28.816"
+      const range = new RegExp(
+        `^(${kwAmount})\\s*(?:[-–/]|fino\\s+a|a(?:\\s+i)?|ed?(?:\\s+i)?|e|to)\\s*(${kwAmount})\\s*(?:€|(?:euro|eur)\\b|\\/anno|all'anno|annuale|annui|annuali|annual\\s+salary)?$`,
+        'i',
+      ).exec(rawVal);
       if (range && range[1] && range[2]) {
         const from = normalizeNum(range[1]);
         const to = normalizeNum(range[2]);
         if (isValidSalary(from) && isValidSalary(to)) {
-          return `${from} - ${to} €`;
+          return { formatted: `${from} - ${to} €`, rawTokens: [range[1].trim(), range[2].trim()] };
         }
       }
       // Single value: "30.000 €", "28k", "25.000", "25k+"
-      const single =
-        /^((?:€|(?:euro|eur)\b)?\s*\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\s*k?\+?)\s*(?:€|(?:euro|eur)\b|\/anno|all'anno|annual\s+salary)?$/i.exec(
-          rawVal,
-        );
+      const single = new RegExp(
+        `^(${kwAmount})\\s*(?:€|(?:euro|eur)\\b|\\/anno|all'anno|annuale|annui|annuali|annual\\s+salary)?$`,
+        'i',
+      ).exec(rawVal);
       if (single && single[1]) {
         const val = normalizeNum(single[1]);
         if (isValidSalary(val)) {
-          return `${val} €`;
+          return { formatted: `${val} €`, rawTokens: [single[1].trim()] };
         }
       }
     }
@@ -217,7 +250,7 @@ export function extractSalary(raw: string | null | undefined): string | null {
     const from = normalizeNum(kRange[1]);
     const to = normalizeNum(kRange[2]);
     if (isValidSalary(from) && isValidSalary(to)) {
-      return `${from} - ${to} €`;
+      return { formatted: `${from} - ${to} €`, rawTokens: [kRange[1].trim(), kRange[2].trim()] };
     }
   }
 
@@ -229,7 +262,7 @@ export function extractSalary(raw: string | null | undefined): string | null {
     const from = normalizeNum(standaloneRange[1]);
     const to = normalizeNum(standaloneRange[2]);
     if (isValidSalary(from) && isValidSalary(to)) {
-      return `${from} - ${to} €`;
+      return { formatted: `${from} - ${to} €`, rawTokens: [standaloneRange[1].trim(), standaloneRange[2].trim()] };
     }
   }
 
@@ -238,7 +271,7 @@ export function extractSalary(raw: string | null | undefined): string | null {
   if (plusMatch && plusMatch[1]) {
     const val = normalizeNum(`${plusMatch[1]}+`);
     if (isValidSalary(val)) {
-      return `${val} €`;
+      return { formatted: `${val} €`, rawTokens: [plusMatch[0].trim()] };
     }
   }
 
@@ -247,9 +280,13 @@ export function extractSalary(raw: string | null | undefined): string | null {
   if (explicitAnnual && explicitAnnual[1]) {
     const val = normalizeNum(explicitAnnual[1]);
     if (isValidSalary(val)) {
-      return `${val} €`;
+      return { formatted: `${val} €`, rawTokens: [explicitAnnual[1].trim()] };
     }
   }
 
   return null;
+}
+
+export function extractSalary(raw: string | null | undefined): string | null {
+  return extractSalaryMatch(raw)?.formatted ?? null;
 }

@@ -52,6 +52,31 @@ const stripNonTechnicalElectronics = (text: string) =>
     .replace(/\b(posta|fatturazione|firma|carta d['’]identità)\s+elettronica\b|\(CIE\)/giu, '$1')
     .replace(/\belicotteri,\s*velivoli,\s*aerostrutture,\s*elettronica\b/giu, 'Elicotteri, Velivoli, Aerostrutture');
 
+const camelBoundary = /\p{Ll}\p{Lu}|\p{Lu}\p{Lu}\p{Ll}/u;
+
+/** Split glued CamelCase tokens (`DesignerJunior`, `PCBDesigner`) unless a weighted keyword already matches the whole token. */
+function splitGluedTitle(title: string, titleWeights: Record<string, number>) {
+  const keywords = Object.keys(titleWeights);
+  return title.replace(/\p{L}+/gu, (token) => {
+    if (!camelBoundary.test(token)) return token;
+    if (keywords.some((keyword) => keywordPattern(keyword).test(token))) return token;
+    return token.replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2').replace(/(\p{Lu}+)(\p{Lu}\p{Ll})/gu, '$1 $2');
+  });
+}
+
+function scoreTitleKeywords(title: string, titleWeights: Record<string, number>) {
+  const split = splitGluedTitle(title, titleWeights);
+  if (split === title) return scoreKeywords(title, titleWeights);
+  let score = 0;
+  const reasons: string[] = [];
+  for (const [keyword, weight] of Object.entries(titleWeights)) {
+    if (!keywordPattern(keyword).test(title) && !keywordPattern(keyword).test(split)) continue;
+    score += weight;
+    reasons.push(reasonOf(keyword, weight));
+  }
+  return { score, reasons };
+}
+
 /** Everything that judges a posting, compiled once for a profile. */
 export function createScorer(profile: Profile) {
   const { weights, filter, patterns } = profile;
@@ -64,7 +89,7 @@ export function createScorer(profile: Profile) {
   }
 
   function scoreTitle(title: string) {
-    return scoreKeywords(title, weights.title);
+    return scoreTitleKeywords(title, weights.title);
   }
 
   function score(posting: Posting): ScoreResult {
@@ -96,7 +121,7 @@ export function createScorer(profile: Profile) {
     const stableFound = stableOf(posting);
     if (stable && stableFound.length) {
       reasons.push(...stableFound.map((reason) => stableLabel[reason]));
-      const ranking = scoreKeywords(posting.title, stable.titleWeights);
+      const ranking = scoreTitleKeywords(posting.title, stable.titleWeights);
       stableScore = ranking.score;
       reasons.push(...ranking.reasons);
       const developerScore = total;

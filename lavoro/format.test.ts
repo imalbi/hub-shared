@@ -131,3 +131,19 @@ void test('highlightHtmlText leaves section titles alone unless a term names the
     '<h3>Requisiti</h3><p>Chi cerchiamo: <span data-mark="skill">React</span></p>',
   );
 });
+
+void test('highlightHtmlText matches whole words only and preserves currency or symbol prefixes', () => {
+  const html = '<p>Area IT: requisiti, attività, capacità, identità, monitorare, titolo e encourage.</p>';
+  assert.equal(
+    highlightHtmlText(html, [skill('IT'), skill('RAG')]),
+    '<p>Area <span data-mark="skill">IT</span>: requisiti, attività, capacità, identità, monitorare, titolo e encourage.</p>',
+  );
+  assert.equal(
+    highlightHtmlText('<p>soluzioni IT e sistemi RAG con .NET e React</p>', [skill('IT'), skill('RAG'), skill('.NET')]),
+    '<p>soluzioni <span data-mark="skill">IT</span> e sistemi <span data-mark="skill">RAG</span> con <span data-mark="skill">.NET</span> e React</p>',
+  );
+  assert.equal(
+    highlightHtmlText('<p>Starting at €42,000 - based on experience</p>', [{ text: '€42,000', mark: 'salary' }]),
+    '<p>Starting at <span data-mark="salary">€42,000</span> - based on experience</p>',
+  );
+});

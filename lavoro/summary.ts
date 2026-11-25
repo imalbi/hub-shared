@@ -1,7 +1,7 @@
 import { copy } from './copy.ts';
 import { cleanSnippet, extractExperience, type MarkTerm } from './format.ts';
 import { isProtectedCategory } from './protected-category.ts';
-import { extractSalary } from './salary.ts';
+import { extractSalary, extractSalaryMatch } from './salary.ts';
 import type { JobRow } from './server.ts';
 import { stableExclusion } from './stable.ts';
 
@@ -126,10 +126,14 @@ export function markTerms(job: JobRow): MarkTerm[] {
     if (years) terms.push({ text: years, mark: 'exclude' });
   }
   if (exclusion && exclusionWord[exclusion]) terms.push({ text: exclusionWord[exclusion], mark: 'exclude' });
-  const salary = extractSalary(body);
+  const salary = extractSalaryMatch(body);
   if (salary) {
-    for (const token of salary.split(/\s*[-–/]\s*/)) {
-      const clean = token.replace(/[^0-9.,kK]/g, '').trim();
+    for (const rawToken of salary.rawTokens) {
+      // Strip whitespace-separated leading currency so HTML `&nbsp;` between `€` and digits never prevents a text match.
+      const clean = rawToken
+        .trim()
+        .replace(/^(?:€|(?:euro|eur)\b)\s+/i, '')
+        .trim();
       if (clean.length >= 2) terms.push({ text: clean, mark: 'salary' });
     }
   }

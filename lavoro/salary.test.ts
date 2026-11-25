@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { extractSalary } from './salary.ts';
+import { extractSalary, extractSalaryMatch } from './salary.ts';
 
 void test('extractSalary parses explicit RAL with k ranges', () => {
   assert.equal(extractSalary('Offerta di lavoro con RAL 28-30k a Torino'), '28k - 30k €');
@@ -105,4 +105,25 @@ void test('extractSalary ignores unrelated numbers or small amounts', () => {
 void test('a seniority word before two bare small numbers is not a salary band', () => {
   assert.equal(extractSalary('Cerchiamo un profilo Junior 20 e 25 anni di età'), null);
   assert.equal(extractSalary('Junior: €28,000 – €34,000, Senior: €40,000 – €55,000'), '28.000 - 34.000 €');
+});
+
+void test('extractSalary parses starting at, up to, fino a, max, and 5-digit unseparated amounts', () => {
+  assert.deepEqual(extractSalaryMatch('Gross annual salary (RAL): Starting at €42,000 - based on experience'), {
+    formatted: '42.000 €',
+    rawTokens: ['€42,000'],
+  });
+  assert.deepEqual(extractSalaryMatch('Retribuzione: € 35000 - € 45000 Annuale'), {
+    formatted: '35.000 - 45.000 €',
+    rawTokens: ['€ 35000', '€ 45000'],
+  });
+  assert.equal(extractSalary('RAL: up to 50.000 €'), '50.000 €');
+  assert.equal(extractSalary('RAL: fino a 27.000 €'), '27.000 €');
+  assert.equal(extractSalary('RAL (da valutare in fase di colloquio): fino a 38k'), '38k €');
+  assert.equal(extractSalary('salary range starts from €60,000 + bonus'), '60.000 €');
+  assert.equal(extractSalary('RAL: (€40.000 - €50.000)'), '40.000 - 50.000 €');
+  assert.equal(extractSalary('Retribuzione: a partire da €20.000'), '20.000 €');
+  assert.equal(extractSalary('Ral: 20000€ - 25000€'), '20.000 - 25.000 €');
+  assert.equal(extractSalary('RAL proposta: max 25k'), '25k €');
+  assert.equal(extractSalary('RAL (28.000-35.000): Il range retributivo è flessibile'), '28.000 - 35.000 €');
+  assert.equal(extractSalary('Sede Torino CAP 10121 con 50000 utenti attivi'), null);
 });

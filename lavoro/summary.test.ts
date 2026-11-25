@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { copy } from './copy.ts';
+import { highlightHtmlText } from './format.ts';
 import type { JobRow } from './server.ts';
 import { detailSummary, markTerms } from './summary.ts';
 
@@ -118,4 +119,15 @@ void test('permanent contract phrase in text is shown and marked even without st
   });
   assert.deepEqual(row(detailSummary(posting), 'favor'), [text.permanent]);
   assert.deepEqual(markTerms(posting), [{ text: 'tempo indeterminato', mark: 'contract' }]);
+});
+
+void test('markTerms preserves exact raw salary token for highlighting formatted amounts', () => {
+  const html = '<p>Gross annual salary (RAL): Starting at €42,000 - based on experience.</p>';
+  const posting = job({ description: null, descriptionHtml: html });
+  const terms = markTerms(posting);
+  assert.deepEqual(terms, [{ text: '€42,000', mark: 'salary' }]);
+  assert.equal(
+    highlightHtmlText(html, terms),
+    '<p>Gross annual salary (RAL): Starting at <span data-mark="salary">€42,000</span> - based on experience.</p>',
+  );
 });
