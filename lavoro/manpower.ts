@@ -59,6 +59,8 @@ export function createManpowerSource({ requestTimeoutMs = 20_000 }: { requestTim
     name: 'manpower',
     kind: 'list',
     async search(_input, context) {
+      const settings = context.limits.manpower;
+      if (!settings) throw new Error('search.manpower is required');
       const cards: Card[] = [];
       let last = Number.NEGATIVE_INFINITY;
       async function get(url: string): Promise<Response> {
@@ -87,7 +89,6 @@ export function createManpowerSource({ requestTimeoutMs = 20_000 }: { requestTim
           }
         }
       }
-      const settings = context.limits.manpower;
       let capped = false;
       let firstError: Error | undefined;
       const seen = new Set<string>();

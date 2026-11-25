@@ -18,3 +18,5 @@
 - Catalog portability: tests must be independent of sibling modules; `server.test.ts` declares its manual-field fixture inline. Iren cards without a town use `SearchInput.location`; the Parere prompt takes qualifications only from the supplied profile.
 
 - `e2e/root/lavoro/server.ts` seeds applications that earlier specs can mutate; Candidature checks independent of status use `?candidature=all`, since the default pending segment may no longer contain the seeded row.
+
+- `config.ts`: source scopes stay under `search.<site>` and are required when enabled globally or by a query override; personal geographic/employer defaults are forbidden. `harness.ts` supplies explicit invented source scopes for fixtures.

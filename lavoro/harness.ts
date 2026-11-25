@@ -7,7 +7,7 @@ import { createFakeDesktop } from '../../apps/server/src/testing/fake-desktop.ts
 import { runCollection, type CollectionKind, type CollectionDeps, type Progress } from './collect.ts';
 import { profileSchema } from './config.ts';
 import { createFakeClock } from './fake-clock.ts';
-import { inventedProfile } from './invented-profile.ts';
+import { inventedProfile, inventedSourceSettings } from './invented-profile.ts';
 import { jobs } from './schema.ts';
 import type { Source } from './source.ts';
 
@@ -51,6 +51,7 @@ const refuseNetwork: typeof fetch = () => {
 /** The invented profile with one query on `indeed` and no pauses; `edit` changes whatever the test is about. */
 export function testProfile(edit: (profile: ReturnType<typeof inventedProfile>) => void = noop) {
   const profile = inventedProfile();
+  Object.assign(profile.search, structuredClone(inventedSourceSettings));
   profile.search.sites = ['indeed'];
   profile.search.queries = [{ name: 'Web', keywords: 'web', indeedTerms: [] }];
   profile.search.pauseSeconds = 0;

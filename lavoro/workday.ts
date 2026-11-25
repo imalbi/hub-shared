@@ -12,7 +12,7 @@ const PAGE_SIZE = 20;
 const fail = (message: string) => new Error(`${SITE}: ${message}`);
 const squash = (text: string | null | undefined) => (text ?? '').split(/\s+/u).filter(Boolean).join(' ');
 
-export type WorkdayEmployer = Profile['search']['workday']['employers'][number];
+export type WorkdayEmployer = NonNullable<Profile['search']['workday']>['employers'][number];
 
 const itemSchema = z.object({
   title: z.string(),
@@ -121,6 +121,8 @@ export function createWorkdaySource({ requestTimeoutMs = 20_000 }: { requestTime
   const cleaner = parseHTML('<!doctype html><html><body></body></html>').document;
 
   async function search(_input: SearchInput, context: SourceContext): Promise<SearchResult> {
+    const settings = context.limits.workday;
+    if (!settings) throw new Error('search.workday is required');
     let last = Number.NEGATIVE_INFINITY;
 
     async function requestJson(url: string, init: RequestInit): Promise<unknown> {
@@ -170,7 +172,7 @@ export function createWorkdaySource({ requestTimeoutMs = 20_000 }: { requestTime
     let firstError: Error | undefined;
     let capped = false;
 
-    for (const employer of context.limits.workday.employers) {
+    for (const employer of settings.employers) {
       try {
         let fresh = 0;
         let failedDetails = 0;
@@ -178,7 +180,7 @@ export function createWorkdaySource({ requestTimeoutMs = 20_000 }: { requestTime
         let page1Total: number | undefined;
         let done = false;
 
-        for (let page = 0; page < context.limits.workday.maxPages; page++) {
+        for (let page = 0; page < settings.maxPages; page++) {
           const offset = page * PAGE_SIZE;
           const payload = await requestJson(listUrl(employer), {
             method: 'POST',

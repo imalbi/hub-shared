@@ -9,7 +9,7 @@ import type { Card, SearchInput, SearchResult, Source, SourceContext } from './s
 
 const SITE = 'oracle';
 const fail = (message: string) => new Error(`${SITE}: ${message}`);
-type Employer = Profile['search']['oracle']['employers'][number];
+type Employer = NonNullable<Profile['search']['oracle']>['employers'][number];
 const itemSchema = z.object({
   Id: z.string().regex(/^\d+$/u),
   Title: z.string(),
@@ -84,6 +84,8 @@ export function readPage(value: unknown, employer: Employer): { cards: Card[]; t
 export function createOracleSource({ requestTimeoutMs = 20_000 }: { requestTimeoutMs?: number } = {}): Source {
   const cleaner = parseHTML('<!doctype html><html><body></body></html>').document;
   async function search(_input: SearchInput, context: SourceContext): Promise<SearchResult> {
+    const settings = context.limits.oracle;
+    if (!settings) throw new Error('search.oracle is required');
     let last = Number.NEGATIVE_INFINITY;
     async function get(url: string): Promise<unknown> {
       for (let attempt = 0; ; attempt++) {
@@ -130,11 +132,11 @@ export function createOracleSource({ requestTimeoutMs = 20_000 }: { requestTimeo
     const seen = new Set<string>();
     let firstError: Error | undefined;
     let capped = false;
-    for (const employer of context.limits.oracle.employers) {
+    for (const employer of settings.employers) {
       try {
         const found: Card[] = [];
         let done = false;
-        for (let page = 0; page < context.limits.oracle.maxPages; page++) {
+        for (let page = 0; page < settings.maxPages; page++) {
           const result = readPage(await get(listUrl(employer, page * 25)), employer);
           found.push(...result.cards);
           if ((page + 1) * 25 >= result.total) {

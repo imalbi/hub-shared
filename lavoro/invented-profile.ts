@@ -54,3 +54,15 @@ export function inventedProfile() {
     },
   };
 }
+
+/** Explicit source scopes for fixture collectors, never production defaults. */
+export const inventedSourceSettings = {
+  inpa: { regionId: 1 },
+  iren: { regions: ['02'] },
+  successfactors: { employers: [{ host: 'careers.example.org', company: 'Example' }], places: ['Exampleville'] },
+  oracle: { employers: [{ host: 'oracle.example.org', site: 'CX_1', company: 'Example' }] },
+  avature: { employers: [{ listUrl: 'https://avature.example.org/jobs', company: 'Example', country: '' }] },
+  manpower: { city: 'exampleville', functions: ['ict'] },
+  workday: { employers: [{ host: 'workday.example.org', tenant: 'example', site: 'Main', company: 'Example' }] },
+  synergie: { regions: ['Example Region'] },
+};

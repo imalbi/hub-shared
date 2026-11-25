@@ -86,7 +86,9 @@ export function createInpaSource({ requestTimeoutMs = 20_000 }: { requestTimeout
   const cleaner = parseHTML('<!doctype html><html><body></body></html>').document;
 
   async function search(_input: SearchInput, context: SourceContext): Promise<SearchResult> {
-    const { regionId, pageSize, maxPages } = context.limits.inpa;
+    const settings = context.limits.inpa;
+    if (!settings) throw new Error('search.inpa is required');
+    const { regionId, pageSize, maxPages } = settings;
     // One gate for every request, on the injected clock.
     let last = Number.NEGATIVE_INFINITY;
 

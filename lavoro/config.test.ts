@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { defaultCategories, parereIntervalMs, profileSchema } from './config.ts';
-import { inventedIndeed, inventedProfile } from './invented-profile.ts';
+import { inventedIndeed, inventedProfile, inventedSourceSettings } from './invented-profile.ts';
 
 const paths = (input: unknown) => {
   const result = profileSchema.safeParse(input);
@@ -148,6 +148,11 @@ void test('sources.indeed holds the credentials and fills the country defaults',
 void test('indeed among the sites needs its credentials, and the refusal names only the path', () => {
   const input = { ...inventedProfile(), sources: {} };
   assert.deepEqual(paths(input), ['sources.indeed']);
+  const queryOnly = {
+    ...input,
+    search: { ...input.search, sites: ['linkedin'], queries: [{ name: 'Web', keywords: 'web', sites: ['indeed'] }] },
+  };
+  assert.deepEqual(paths(queryOnly), ['sources.indeed']);
   // nothing to require when Indeed is not searched
   const search = { ...inventedProfile().search, sites: ['linkedin'] };
   assert.equal(profileSchema.safeParse({ ...inventedProfile(), search, sources: {} }).success, true);
@@ -197,116 +202,78 @@ void test('the stable section is optional, has defaults, and an unknown key insi
   assert.deepEqual(paths({ ...inventedProfile(), stable: { sites: ['nowhere'] } }), ['stable.sites.0']);
 });
 
-void test('iren is a site, its regions default to Piemonte and a malformed code blocks the profile', () => {
-  const withIren = (iren: object) => ({
-    ...inventedProfile(),
-    search: { ...inventedProfile().search, sites: ['iren'], iren },
-  });
-  assert.deepEqual(profileSchema.parse(withIren({})).search.iren, { regions: ['02'] });
-  assert.deepEqual(profileSchema.parse(withIren({ regions: ['01', '02'] })).search.iren.regions, ['01', '02']);
-  assert.deepEqual(paths(withIren({ regions: ['Piemonte'] })), ['search.iren.regions.0']);
-  assert.deepEqual(paths(withIren({ regions: [] })), ['search.iren.regions']);
-  assert.deepEqual(paths(withIren({ region: ['02'] })), ['search.iren']);
+void test('source scopes have no implicit personal defaults and are required when enabled', () => {
+  const base = inventedProfile();
+  const parsed = profileSchema.parse(base);
+  for (const [site, settings] of Object.entries(inventedSourceSettings)) {
+    assert.equal(Reflect.get(parsed.search, site), undefined, site);
+    const enabled = { ...base, search: { ...base.search, sites: [site] } };
+    assert.deepEqual(paths(enabled), [`search.${site}`]);
+    const incomplete = { ...enabled, search: { ...enabled.search, [site]: {} } };
+    const required = Object.keys(settings).map((field) => `search.${site}.${field}`);
+    assert.deepEqual(paths(incomplete), required);
+    assert.equal(
+      profileSchema.safeParse({ ...enabled, search: { ...enabled.search, [site]: settings } }).success,
+      true,
+    );
+    assert.deepEqual(paths({ ...enabled, search: { ...enabled.search, [site]: { ...settings, typo: true } } }), [
+      `search.${site}`,
+    ]);
+    for (const [field, value] of Object.entries(settings)) {
+      const invalid = Array.isArray(value) ? [] : typeof value === 'number' ? 0 : '';
+      assert.deepEqual(
+        paths({ ...enabled, search: { ...enabled.search, [site]: { ...settings, [field]: invalid } } }),
+        [`search.${site}.${field}`],
+      );
+    }
+    const queryOnly = {
+      ...base,
+      search: { ...base.search, queries: [{ name: 'Extra', keywords: 'web', sites: [site] }] },
+    };
+    assert.deepEqual(paths(queryOnly), [`search.${site}`]);
+  }
 });
 
-void test('successfactors defaults are valid and a host must be a bare hostname', () => {
-  const withSettings = (successfactors: object) => ({
-    ...inventedProfile(),
-    search: { ...inventedProfile().search, sites: ['successfactors'], successfactors },
-  });
-  const settings = profileSchema.parse(withSettings({})).search.successfactors;
-  assert.deepEqual(
-    settings.employers.map((employer) => employer.company),
-    ['Intesa Sanpaolo', 'Italgas', 'Anas'],
-  );
-  assert.deepEqual(settings.places, ['Torino']);
-  assert.equal(settings.maxPages, 10);
-  assert.deepEqual(paths(withSettings({ employers: [{ host: 'https://example.org/path', company: 'Example' }] })), [
-    'search.successfactors.employers.0.host',
-  ]);
-});
-
-void test('oracle defaults and employer validation', () => {
-  const withSettings = (oracle: object) => ({
-    ...inventedProfile(),
-    search: { ...inventedProfile().search, sites: ['oracle'], oracle },
-    stable: { sites: ['oracle'] },
-  });
-  const settings = profileSchema.parse(withSettings({})).search.oracle;
-  assert.deepEqual(
-    settings.employers.map((row) => row.company),
-    ['A2A', 'Credem', 'Poste Italiane'],
-  );
-  assert.equal(settings.maxPages, 10);
-  assert.deepEqual(
-    paths(withSettings({ employers: [{ host: 'https://example.org/path', site: 'wrong', company: 'Example' }] })),
-    ['search.oracle.employers.0.host', 'search.oracle.employers.0.site'],
-  );
-});
-
-void test('Avature site and employer defaults validate HTTPS URLs', () => {
+void test('explicit source scopes keep technical defaults and reject malformed source fields', () => {
   const profile = profileSchema.parse({
     ...inventedProfile(),
-    search: { ...inventedProfile().search, sites: ['avature'] },
-    stable: { sites: ['avature'] },
+    search: { ...inventedProfile().search, ...inventedSourceSettings },
   });
-  assert.equal(profile.search.avature.employers.length, 2);
-  assert.equal(profile.search.avature.maxPages, 25);
-  assert.equal(profile.search.avature.employers[1]?.country, 'Italy');
-  assert.equal(
-    profileSchema.safeParse({
-      ...inventedProfile(),
-      search: {
-        ...inventedProfile().search,
-        avature: { employers: [{ listUrl: 'http://example.org/list', company: 'Example', country: '' }] },
-      },
-    }).success,
-    false,
-  );
-});
-
-void test('M8 Manpower defaults, site and slug validation', () => {
-  const profile = inventedProfile();
-  const parsed = profileSchema.parse({ ...profile, search: { ...profile.search, sites: ['manpower'] } });
-  assert.deepEqual(parsed.search.manpower, {
-    city: 'torino',
-    functions: ['ict', 'engineering', 'manutenzione-e-riparazione', 'ricerca-e-sviluppo'],
-    maxPages: 5,
-  });
-  assert.deepEqual(
-    paths({ ...profile, search: { ...profile.search, manpower: { city: 'bad/city', functions: ['ict', 'bad1'] } } }),
-    ['search.manpower.city', 'search.manpower.functions.1'],
-  );
-});
-
-void test('Workday defaults, site and tenant validation', () => {
-  const profile = inventedProfile();
-  const parsed = profileSchema.parse({ ...profile, search: { ...profile.search, sites: ['workday'] } });
-  assert.equal(parsed.search.workday.employers.length, 4);
-  assert.deepEqual(
-    parsed.search.workday.employers.map((e) => e.company),
-    ['Snam', 'Banca Sella', 'Leonardo', 'Avio Aero'],
-  );
-  assert.equal(parsed.search.workday.maxPages, 10);
-  assert.deepEqual(
-    paths({
-      ...profile,
-      search: {
-        ...profile.search,
-        workday: { employers: [{ host: 'https://bad.org', tenant: 'bad/t', site: 'bad s', company: 'X' }] },
-      },
-    }),
-    ['search.workday.employers.0.host', 'search.workday.employers.0.tenant', 'search.workday.employers.0.site'],
-  );
-});
-
-void test('Synergie defaults and region validation', () => {
-  const profile = inventedProfile();
-  const parsed = profileSchema.parse({ ...profile, search: { ...profile.search, sites: ['synergie'] } });
-  assert.deepEqual(parsed.search.synergie, { regions: ['Piemonte'], maxPages: 10 });
-  assert.deepEqual(paths({ ...profile, search: { ...profile.search, synergie: { regions: ['Piemonte/1'] } } }), [
+  assert.equal(profile.search.inpa?.pageSize, 100);
+  assert.equal(profile.search.inpa?.maxPages, 5);
+  assert.equal(profile.search.successfactors?.maxPages, 10);
+  assert.equal(profile.search.oracle?.maxPages, 10);
+  assert.equal(profile.search.avature?.maxPages, 25);
+  assert.equal(profile.search.manpower?.maxPages, 5);
+  assert.equal(profile.search.workday?.maxPages, 10);
+  assert.equal(profile.search.workday?.employers[0]?.searchText, '');
+  assert.equal(profile.search.synergie?.maxPages, 10);
+  const malformed = {
+    iren: { regions: ['bad'] },
+    successfactors: {
+      ...inventedSourceSettings.successfactors,
+      employers: [{ host: 'https://example.org/path', company: 'Example' }],
+    },
+    oracle: { employers: [{ host: 'https://example.org/path', site: 'wrong', company: 'Example' }] },
+    avature: { employers: [{ listUrl: 'http://example.org/list', company: 'Example', country: '' }] },
+    manpower: { city: 'bad/city', functions: ['ict', 'bad1'] },
+    workday: { employers: [{ host: 'https://bad.org', tenant: 'bad/t', site: 'bad s', company: 'X' }] },
+    synergie: { regions: ['Example/1'] },
+  };
+  const expected = [
+    'search.iren.regions.0',
+    'search.successfactors.employers.0.host',
+    'search.oracle.employers.0.host',
+    'search.oracle.employers.0.site',
+    'search.avature.employers.0.listUrl',
+    'search.manpower.city',
+    'search.manpower.functions.1',
+    'search.workday.employers.0.host',
+    'search.workday.employers.0.tenant',
+    'search.workday.employers.0.site',
     'search.synergie.regions.0',
-  ]);
+  ];
+  assert.deepEqual(paths({ ...inventedProfile(), search: { ...inventedProfile().search, ...malformed } }), expected);
 });
 
 void test('allowed provinces default empty and accept only two uppercase letters', () => {
@@ -341,7 +308,7 @@ void test('employer hosts and avature listUrl reject internal/local/IP hostnames
         ...inventedProfile(),
         search: {
           ...inventedProfile().search,
-          successfactors: { employers: [{ host, company: 'Example' }] },
+          successfactors: { ...inventedSourceSettings.successfactors, employers: [{ host, company: 'Example' }] },
         },
       }),
       ['search.successfactors.employers.0.host'],

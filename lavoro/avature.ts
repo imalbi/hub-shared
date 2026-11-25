@@ -42,6 +42,8 @@ export function readPage(
 export function createAvatureSource({ requestTimeoutMs = 20_000 }: { requestTimeoutMs?: number } = {}): Source {
   const cleaner = parseHTML('<!doctype html><html><body></body></html>').document;
   async function search(_input: SearchInput, context: SourceContext): Promise<SearchResult> {
+    const settings = context.limits.avature;
+    if (!settings) throw new Error('search.avature is required');
     let last = Number.NEGATIVE_INFINITY;
     async function get(url: string): Promise<Document> {
       for (let attempt = 0; ; attempt++) {
@@ -87,13 +89,13 @@ export function createAvatureSource({ requestTimeoutMs = 20_000 }: { requestTime
     const cards: Card[] = [];
     let firstError: Error | undefined;
     let capped = false;
-    for (const employer of context.limits.avature.employers) {
+    for (const employer of settings.employers) {
       try {
         const found: Item[] = [];
         const seen = new Set<string>();
         let size = 0;
         let done = false;
-        for (let page = 0; page < context.limits.avature.maxPages; page++) {
+        for (let page = 0; page < settings.maxPages; page++) {
           const url = new URL(employer.listUrl);
           if (page) url.searchParams.set('jobOffset', String(page * size));
           const result = readPage(await get(url.href), employer);

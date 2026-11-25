@@ -22,7 +22,7 @@ const input: SearchInput = {
 
 function context(fetch: typeof globalThis.fetch, patch: Partial<SourceContext> = {}, iren: object = {}) {
   const profile = testProfile((p) => {
-    Object.assign(p.search, { iren });
+    Object.assign(p.search, { iren: { regions: ['02'], ...iren } });
   });
   let now = NOW;
   const sleeps: number[] = [];

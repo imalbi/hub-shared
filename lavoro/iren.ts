@@ -115,7 +115,9 @@ export function createIrenSource({ requestTimeoutMs = 20_000 }: { requestTimeout
   const cleaner = parseHTML('<!doctype html><html><body></body></html>').document;
 
   async function search(input: SearchInput, context: SourceContext): Promise<SearchResult> {
-    const regions = new Set(context.limits.iren.regions);
+    const settings = context.limits.iren;
+    if (!settings) throw new Error('search.iren is required');
+    const regions = new Set(settings.regions);
     // One gate for the board and the details together, on the injected clock.
     let last = Number.NEGATIVE_INFINITY;
 

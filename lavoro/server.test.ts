@@ -42,7 +42,7 @@ import { createFakeSource, makeCard } from './fake-source.ts';
 import { detail as avatureDetail, enel as avatureEnel, listing as avatureListing } from './fake-avature.ts';
 import { profileSchema } from './config.ts';
 import { silentLog, testProfile } from './harness.ts';
-import { inventedProfile } from './invented-profile.ts';
+import { inventedProfile, inventedSourceSettings } from './invented-profile.ts';
 import { postingKey } from './key.ts';
 import { jobMailLink, jobs, jobApplied, mailChecked, mailProposals } from './schema.ts';
 import { candidaturaClientArgs, createLavoroModule, postingId, type JobRow } from './server.ts';
@@ -4454,7 +4454,10 @@ export default defineModule({
 });`,
   );
 
-  const initialProfile = profileSchema.parse(inventedProfile());
+  const initialProfile = profileSchema.parse({
+    ...inventedProfile(),
+    search: { ...inventedProfile().search, ...inventedSourceSettings },
+  });
   const initialConfig = {
     ...emptyConfig,
     modules: { lavoro: initialProfile, airplay: { command: '/usr/bin/airplay-fixture' } },
@@ -4490,7 +4493,7 @@ export default defineModule({
             ...initialProfile.search.successfactors,
             employers: [
               { host: 'evil.example', company: 'X' },
-              ...initialProfile.search.successfactors.employers.slice(1),
+              ...(initialProfile.search.successfactors?.employers ?? []).slice(1),
             ],
           },
         },
@@ -4507,7 +4510,7 @@ export default defineModule({
             ...initialProfile.search.oracle,
             employers: [
               { host: 'evil.example', site: 'CX_1', company: 'X' },
-              ...initialProfile.search.oracle.employers.slice(1),
+              ...(initialProfile.search.oracle?.employers ?? []).slice(1),
             ],
           },
         },
@@ -4524,7 +4527,7 @@ export default defineModule({
             ...initialProfile.search.avature,
             employers: [
               { listUrl: 'https://evil.example/list', company: 'X', country: '' },
-              ...initialProfile.search.avature.employers.slice(1),
+              ...(initialProfile.search.avature?.employers ?? []).slice(1),
             ],
           },
         },

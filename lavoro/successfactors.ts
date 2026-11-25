@@ -65,6 +65,8 @@ export function readDetail(
 export function createSuccessFactorsSource({ requestTimeoutMs = 20_000 }: { requestTimeoutMs?: number } = {}): Source {
   const cleaner = parseHTML('<!doctype html><html><body></body></html>').document;
   async function search(_input: SearchInput, context: SourceContext): Promise<SearchResult> {
+    const settings = context.limits.successfactors;
+    if (!settings) throw new Error('search.successfactors is required');
     let last = Number.NEGATIVE_INFINITY;
     async function get(url: string): Promise<Document> {
       for (let attempt = 0; ; attempt++) {
@@ -112,13 +114,13 @@ export function createSuccessFactorsSource({ requestTimeoutMs = 20_000 }: { requ
     let firstError: Error | undefined;
     // A cap that stopped a listing before its stated total leaves postings unread: not the whole listing.
     let capped = false;
-    for (const employer of context.limits.successfactors.employers) {
+    for (const employer of settings.employers) {
       try {
         const found: Item[] = [];
-        for (const place of context.limits.successfactors.places) {
+        for (const place of settings.places) {
           let start = 0;
           let done = false;
-          for (let page = 0; page < context.limits.successfactors.maxPages; page++) {
+          for (let page = 0; page < settings.maxPages; page++) {
             const params = new URLSearchParams({ q: '', locationsearch: place, startrow: String(start) });
             const result = readPage(await get(`https://${employer.host}/search/?${params}`), employer.host);
             found.push(...result.items);

@@ -148,15 +148,10 @@ const linkedin = z
   })
   .meta({ title: 'LinkedIn', description: 'Come cercare e quanto andare piano su LinkedIn.' });
 
-// inPA (16n2): one region, read page by page. `regionId` is inPA's own id (12 is Piemonte, found in the live check).
+// inPA uses its own region ids, read page by page.
 const inpa = z
   .strictObject({
-    regionId: z
-      .number()
-      .int()
-      .positive()
-      .default(12)
-      .meta({ title: 'Regione', description: 'Codice della regione secondo inPA; 12 è il Piemonte.' }),
+    regionId: z.number().int().positive().meta({ title: 'Regione', description: 'Codice della regione secondo inPA.' }),
     pageSize: count
       .default(100)
       .meta({ title: 'Annunci per pagina', description: 'Quanti annunci chiedere a ogni pagina.', unit: 'annunci' }),
@@ -172,7 +167,6 @@ const iren = z
     regions: z
       .array(z.string().regex(/^\d{2}$/u))
       .min(1)
-      .default(['02'])
       .meta({
         title: 'Regioni',
         description: 'Codici regione di IRENfutura: 02 Piemonte, 01 Emilia, 03 Liguria, 04 altre regioni.',
@@ -180,11 +174,9 @@ const iren = z
   })
   .meta({ title: 'IRENfutura', description: 'Annunci di IREN per le regioni scelte.' });
 
-// Terna (jobs.terna.it) is SuccessFactors too, but its search page draws results with JavaScript (16n3b review):
 const publicHostRegex = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/iu;
 const isValidEmployerHost = (value: string) => publicHostRegex.test(value) && isPublicHostname(value);
 
-// only its RSS feed lists them, so it is not a default.
 const successfactors = z
   .strictObject({
     employers: z
@@ -202,13 +194,8 @@ const successfactors = z
         }),
       )
       .min(1)
-      .meta({ title: 'Aziende', description: 'Siti carriere SuccessFactors da leggere.' })
-      .default([
-        { host: 'jobs.intesasanpaolo.com', company: 'Intesa Sanpaolo' },
-        { host: 'carriere.italgas.it', company: 'Italgas' },
-        { host: 'careers.stradeanas.it', company: 'Anas' },
-      ]),
-    places: words.min(1).default(['Torino']).meta({ title: 'Luoghi', description: 'Luoghi cercati su ogni sito.' }),
+      .meta({ title: 'Aziende', description: 'Siti carriere SuccessFactors da leggere.' }),
+    places: words.min(1).meta({ title: 'Luoghi', description: 'Luoghi cercati su ogni sito.' }),
     maxPages: count
       .default(10)
       .meta({ title: 'Pagine massime', description: 'Quante pagine leggere al massimo per sito.', unit: 'pagine' }),
@@ -236,12 +223,7 @@ const oracle = z
         }),
       )
       .min(1)
-      .meta({ title: 'Aziende', description: 'Siti carriere Oracle da leggere.' })
-      .default([
-        { host: 'hdeh.fa.em3.oraclecloud.com', site: 'CX_1', company: 'A2A' },
-        { host: 'hczf.fa.em2.oraclecloud.com', site: 'CX_1', company: 'Credem' },
-        { host: 'fa-emza-saasfaprod1.fa.ocs.oraclecloud.com', site: 'CX_3001', company: 'Poste Italiane' },
-      ]),
+      .meta({ title: 'Aziende', description: 'Siti carriere Oracle da leggere.' }),
     maxPages: count
       .default(10)
       .meta({ title: 'Pagine massime', description: 'Quante pagine leggere al massimo per sito.', unit: 'pagine' }),
@@ -282,11 +264,7 @@ const avature = z
         }),
       )
       .min(1)
-      .meta({ title: 'Aziende', description: 'Elenchi di annunci Avature da leggere.' })
-      .default([
-        { listUrl: 'https://jobs.enel.com/it_IT/careers/JobOpenings', company: 'Enel', country: '' },
-        { listUrl: 'https://careers.unicredit.eu/en_GB/jobsuche/SearchJobs', company: 'UniCredit', country: 'Italy' },
-      ]),
+      .meta({ title: 'Aziende', description: 'Elenchi di annunci Avature da leggere.' }),
     maxPages: count
       .default(25)
       .meta({ title: 'Pagine massime', description: 'Quante pagine leggere al massimo per elenco.', unit: 'pagine' }),
@@ -296,13 +274,10 @@ const avature = z
 const slug = z.string().regex(/^[a-z-]+$/u);
 const manpower = z
   .strictObject({
-    city: slug
-      .default('torino')
-      .meta({ title: 'Città', description: "Città cercata, scritta come nell'indirizzo di Manpower." }),
+    city: slug.meta({ title: 'Città', description: "Città cercata, scritta come nell'indirizzo di Manpower." }),
     functions: z
       .array(slug)
       .min(1)
-      .default(['ict', 'engineering', 'manutenzione-e-riparazione', 'ricerca-e-sviluppo'])
       .meta({ title: 'Funzioni', description: "Aree di lavoro da cercare, scritte come nell'indirizzo di Manpower." }),
     maxPages: count
       .default(5)
@@ -335,35 +310,11 @@ const workday = z
           searchText: z
             .string()
             .default('')
-            .meta({ title: 'Filtro testo', description: 'Testo opzionale inviato alla ricerca Workday (es. Torino).' }),
+            .meta({ title: 'Filtro testo', description: 'Testo opzionale inviato alla ricerca Workday.' }),
         }),
       )
       .min(1)
-      .meta({ title: 'Aziende', description: 'Siti carriere Workday da leggere.' })
-      .default([
-        { host: 'wd103.myworkdaysite.com', tenant: 'snam', site: 'Carriere', company: 'Snam', searchText: '' },
-        {
-          host: 'sellagroup.wd3.myworkdayjobs.com',
-          tenant: 'sellagroup',
-          site: 'ID01',
-          company: 'Banca Sella',
-          searchText: '',
-        },
-        {
-          host: 'leonardocompany.wd3.myworkdayjobs.com',
-          tenant: 'leonardocompany',
-          site: 'LeonardoCareerSite',
-          company: 'Leonardo',
-          searchText: 'Torino',
-        },
-        {
-          host: 'geaerospace.wd5.myworkdayjobs.com',
-          tenant: 'geaerospace',
-          site: 'GE_ExternalSite',
-          company: 'Avio Aero',
-          searchText: 'Torino',
-        },
-      ]),
+      .meta({ title: 'Aziende', description: 'Siti carriere Workday da leggere.' }),
     maxPages: count
       .default(10)
       .meta({ title: 'Pagine massime', description: 'Quante pagine leggere al massimo per sito.', unit: 'pagine' }),
@@ -376,8 +327,7 @@ const synergie = z
     regions: z
       .array(synergieRegion)
       .min(1)
-      .default(['Piemonte'])
-      .meta({ title: 'Regioni', description: 'Regioni cercate su Synergie Italia (es. Piemonte).' }),
+      .meta({ title: 'Regioni', description: 'Regioni cercate su Synergie Italia.' }),
     maxPages: count
       .default(10)
       .meta({ title: 'Pagine massime', description: 'Quante pagine leggere al massimo per regione.', unit: 'pagine' }),
@@ -427,14 +377,14 @@ const search = z
         description: 'Sostituisce le richieste in parallelo per un portale; se vuoto vale il valore generale.',
       }),
     linkedin: linkedin.default(linkedin.parse({})),
-    inpa: inpa.default(inpa.parse({})),
-    iren: iren.default(iren.parse({})),
-    successfactors: successfactors.default(successfactors.parse({})),
-    oracle: oracle.default(oracle.parse({})),
-    avature: avature.default(avature.parse({})),
-    manpower: manpower.default(manpower.parse({})),
-    workday: workday.default(workday.parse({})),
-    synergie: synergie.default(synergie.parse({})),
+    inpa: inpa.optional(),
+    iren: iren.optional(),
+    successfactors: successfactors.optional(),
+    oracle: oracle.optional(),
+    avature: avature.optional(),
+    manpower: manpower.optional(),
+    workday: workday.optional(),
+    synergie: synergie.optional(),
     queries: z
       .array(query)
       .min(1)
@@ -777,9 +727,25 @@ export const profileSchema = z
       auto: false,
     }),
   })
-  .refine((profile) => !profile.search.sites.includes('indeed') || profile.sources.indeed !== undefined, {
-    path: ['sources', 'indeed'],
-    message: 'required when indeed is in search.sites',
+  .superRefine((profile, ctx) => {
+    const enabled = new Set([...profile.search.sites, ...profile.search.queries.flatMap((query) => query.sites ?? [])]);
+    if (enabled.has('indeed') && !profile.sources.indeed) {
+      ctx.addIssue({ code: 'custom', path: ['sources', 'indeed'], message: 'required when indeed is enabled' });
+    }
+    for (const site of [
+      'inpa',
+      'iren',
+      'successfactors',
+      'oracle',
+      'avature',
+      'manpower',
+      'workday',
+      'synergie',
+    ] as const) {
+      if (enabled.has(site) && !profile.search[site]) {
+        ctx.addIssue({ code: 'custom', path: ['search', site], message: `required when ${site} is enabled` });
+      }
+    }
   });
 
 export type Profile = z.output<typeof profileSchema>;

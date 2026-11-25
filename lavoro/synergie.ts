@@ -157,6 +157,8 @@ export function createSynergieSource({ requestTimeoutMs = 20_000 }: { requestTim
   const cleaner = parseHTML('<!doctype html><html><body></body></html>').document;
 
   async function search(_input: SearchInput, context: SourceContext): Promise<SearchResult> {
+    const settings = context.limits.synergie;
+    if (!settings) throw new Error('search.synergie is required');
     let last = Number.NEGATIVE_INFINITY;
 
     async function request(url: string, init: RequestInit): Promise<Response> {
@@ -215,12 +217,12 @@ export function createSynergieSource({ requestTimeoutMs = 20_000 }: { requestTim
 
     const queryUrl = `https://${algolia.appId.toLowerCase()}-dsn.algolia.net/1/indexes/${algolia.indexName}/query`;
 
-    for (const region of context.limits.synergie.regions) {
+    for (const region of settings.regions) {
       try {
         let regionRead = 0;
         let done = false;
 
-        for (let page = 0; page < context.limits.synergie.maxPages; page++) {
+        for (let page = 0; page < settings.maxPages; page++) {
           const res = await request(queryUrl, {
             method: 'POST',
             headers: {
