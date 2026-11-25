@@ -1,3 +1,4 @@
+import { LoadingSkeleton } from '../../apps/web/src/components/ui/loading-skeleton.tsx';
 import { QueueIcon } from '@phosphor-icons/react';
 import { EmptyState } from '../../apps/web/src/components/ui/empty-state.tsx';
 import { AnimatedRows } from '../../apps/web/src/components/animated-list.tsx';
@@ -158,7 +159,10 @@ export function Listen({
             </>
           )}
         </div>
-        {!queue?.current &&
+        {queue === undefined ? (
+          <LoadingSkeleton label={m.music_loading()} rows={3} />
+        ) : (
+          !queue.current &&
           (hasSuggestions || recent.length > 0 ? (
             <EmptyState
               variant="inline"
@@ -167,7 +171,8 @@ export function Listen({
             />
           ) : (
             <EmptyState scene="music" title={m.music_queue_empty()} />
-          ))}
+          ))
+        )}
         {queue?.errors === 3 && <output>{m.music_radio_error()}</output>}
         {(skip.isError || stop.isError) && <output>{m.music_player_error()}</output>}
         <ul className="grid grid-cols-2 content-start gap-x-xl">

@@ -1,3 +1,4 @@
+import { LoadingSkeleton } from '../../apps/web/src/components/ui/loading-skeleton.tsx';
 import { NumberRoll } from '../../apps/web/src/components/ui/number-roll.tsx';
 import { AnimatedItem, AnimatedRows } from '../../apps/web/src/components/animated-list.tsx';
 import * as React from 'react';
@@ -232,7 +233,9 @@ export function PostingsList({
             {copy.error.retry}
           </button>
         </div>
-      ) : !loaded ? null : pagedJobs.length === 0 ? (
+      ) : !loaded ? (
+        <LoadingSkeleton label={copy.widget.loading} rows={3} />
+      ) : pagedJobs.length === 0 ? (
         <EmptyState
           title={hasActiveFilters ? copy.empty.filtered_title : emptyTitleBySegment[currentSegment]}
           description={hasActiveFilters ? copy.empty.filtered_description : emptyDescBySegment[currentSegment]}

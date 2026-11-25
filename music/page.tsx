@@ -1,3 +1,4 @@
+import { LoadingSkeleton } from '../../apps/web/src/components/ui/loading-skeleton.tsx';
 import { EmptyState } from '../../apps/web/src/components/ui/empty-state.tsx';
 import { AnimatedRows } from '../../apps/web/src/components/animated-list.tsx';
 import { FadeImage } from '../../apps/web/src/components/fade-image.tsx';
@@ -31,7 +32,8 @@ function SavedSongs({
   const trpc = useMusicTRPC();
   const favorites = useQuery(trpc.favorites.queryOptions());
   const history = useQuery(trpc.history.queryOptions());
-  const rows = (kind === 'favorites' ? favorites : history).data;
+  const saved = kind === 'favorites' ? favorites : history;
+  const rows = saved.data;
   const label = kind === 'favorites' ? m.music_favorites() : m.music_history();
   const songs = (rows ?? []).map((row) => ({
     key: kind === 'history' && 'playedAt' in row ? `${row.id}-${row.playedAt}` : row.id,
@@ -45,6 +47,7 @@ function SavedSongs({
   return (
     <section aria-label={label} className="flex min-h-0 flex-1 flex-col gap-md">
       <h2 className="text-heading">{label}</h2>
+      {saved.isPending && <LoadingSkeleton label={m.music_loading()} rows={3} />}
       {rows?.length === 0 && (
         <EmptyState scene="music" title={kind === 'favorites' ? m.music_favorites_empty() : m.music_history_empty()} />
       )}

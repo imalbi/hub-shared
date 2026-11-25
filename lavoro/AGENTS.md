@@ -16,3 +16,5 @@
 - Pagination controls archival: `synergie.ts` must reach `nbPages` even across filtered or duplicate pages; `workday.ts` retains each page before requesting the next, so later failures preserve partial results and stay incomplete.
 
 - Catalog portability: tests must be independent of sibling modules; `server.test.ts` declares its manual-field fixture inline. Iren cards without a town use `SearchInput.location`; the Parere prompt takes qualifications only from the supplied profile.
+
+- `e2e/root/lavoro/server.ts` seeds applications that earlier specs can mutate; Candidature checks independent of status use `?candidature=all`, since the default pending segment may no longer contain the seeded row.

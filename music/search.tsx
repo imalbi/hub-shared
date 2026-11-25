@@ -1,3 +1,4 @@
+import { LoadingSkeleton } from '../../apps/web/src/components/ui/loading-skeleton.tsx';
 import { EmptyState } from '../../apps/web/src/components/ui/empty-state.tsx';
 import { useQuery } from '@tanstack/react-query';
 import { ButtonGroup } from '@/components/ui/button-group.tsx';
@@ -46,6 +47,7 @@ export function SearchResults({
         <PublicPlaylists query={query} onPlaySong={onPlay} onArtist={onArtist} />
       ) : (
         <>
+          {results.isPending && <LoadingSkeleton label={m.music_loading()} rows={3} />}
           {results.isError && <output>{m.music_search_error()}</output>}
           {results.isSuccess && results.data.length === 0 && <EmptyState scene="search" title={m.music_empty()} />}
           <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain">

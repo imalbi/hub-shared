@@ -1,3 +1,4 @@
+import { LoadingSkeleton } from '../../apps/web/src/components/ui/loading-skeleton.tsx';
 import { Fragment, useId } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSubscription } from '@trpc/tanstack-react-query';
@@ -51,7 +52,11 @@ export function StudyPlans() {
   return (
     <div className="grid grid-cols-12 items-start gap-lg">
       <div className="col-span-7 flex flex-col gap-lg">
-        {headers.length > 0 && data ? (
+        {active.isPending || index.isPending ? (
+          <Panel>
+            <LoadingSkeleton label={m.tile_loading()} rows={3} />
+          </Panel>
+        ) : headers.length > 0 && data ? (
           headers.map((header) => (
             <ActivePlan
               key={header.id}

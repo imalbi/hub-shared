@@ -1,3 +1,4 @@
+import { LoadingSkeleton } from '../../apps/web/src/components/ui/loading-skeleton.tsx';
 import * as React from 'react';
 import { Binoculars as BinocularsIcon } from '@phosphor-icons/react';
 import { useNavigate, useSearch } from '../../apps/web/src/lib/zone-search.ts';
@@ -964,39 +965,50 @@ export function RicercaZonePage() {
           {
             id: 'candidature',
             label: copy.tab_candidature,
-            content: (
-              <CandidaturePage
-                jobs={allJobs}
-                now={now}
-                onOpenDetail={openDetail}
-                mailCheck={lavoroState?.status === 'ready' ? lavoroState.mailCheck : null}
-                onChanged={() => void fetchData()}
-              />
-            ),
+            content:
+              data === null ? (
+                <LoadingSkeleton label={copy.widget.loading} rows={3} />
+              ) : (
+                <CandidaturePage
+                  jobs={allJobs}
+                  now={now}
+                  onOpenDetail={openDetail}
+                  mailCheck={lavoroState?.status === 'ready' ? lavoroState.mailCheck : null}
+                  onChanged={() => void fetchData()}
+                />
+              ),
           },
           {
             id: 'statistiche',
             label: copy.tab_statistiche,
-            content: <StatsPage jobs={allJobs} onChanged={() => void fetchData()} />,
+            content:
+              data === null ? (
+                <LoadingSkeleton label={copy.widget.loading} rows={3} />
+              ) : (
+                <StatsPage jobs={allJobs} onChanged={() => void fetchData()} />
+              ),
           },
           {
             id: 'regole',
             label: copy.tab_regole,
             count: rules.length,
-            content: (
-              <RulesPage
-                rules={rules}
-                jobs={allJobs}
-                onCreateRule={handleCreateRule}
-                onUpdateRule={handleUpdateRule}
-                onDeleteRule={handleDeleteRule}
-                onToggleEnabled={handleToggleRuleEnabled}
-                onViewRulePostings={handleViewRulePostings}
-                onOpenDetail={openDetail}
-                prefilledRule={prefilledRule}
-                onClearPrefilled={() => setPrefilledRule(null)}
-              />
-            ),
+            content:
+              data === null ? (
+                <LoadingSkeleton label={copy.widget.loading} rows={3} />
+              ) : (
+                <RulesPage
+                  rules={rules}
+                  jobs={allJobs}
+                  onCreateRule={handleCreateRule}
+                  onUpdateRule={handleUpdateRule}
+                  onDeleteRule={handleDeleteRule}
+                  onToggleEnabled={handleToggleRuleEnabled}
+                  onViewRulePostings={handleViewRulePostings}
+                  onOpenDetail={openDetail}
+                  prefilledRule={prefilledRule}
+                  onClearPrefilled={() => setPrefilledRule(null)}
+                />
+              ),
           },
         ]}
       />

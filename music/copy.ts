@@ -15,6 +15,7 @@ export const m = {
   music_history_empty: () => 'Nessun brano ascoltato',
   music_library: () => 'Libreria',
   music_listen: () => 'Ascolta',
+  music_loading: () => 'Caricamento',
   music_next: () => 'Prossimi',
   music_play: ({ title }: { title: string | number }) => `Riproduci ${title}`,
   music_player_error: () => 'Lettore musicale non raggiungibile',
