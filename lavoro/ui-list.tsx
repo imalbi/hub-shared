@@ -234,7 +234,7 @@ export function PostingsList({
           </button>
         </div>
       ) : !loaded ? (
-        <LoadingSkeleton label={copy.widget.loading} rows={3} />
+        <LoadingSkeleton variant="centered" label={copy.widget.loading} />
       ) : pagedJobs.length === 0 ? (
         <EmptyState
           title={hasActiveFilters ? copy.empty.filtered_title : emptyTitleBySegment[currentSegment]}
