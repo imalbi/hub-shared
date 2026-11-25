@@ -90,9 +90,8 @@ export function DetailDialog({
   const activeRule =
     shownJob !== null && shownJob.blacklistRule !== null ? rules.find((r) => r.id === shownJob.blacklistRule) : null;
   const hasHttpUrl = Boolean(shownJob?.url && shownJob.url.startsWith('http'));
-  const isEmptyDescription = shownJob !== null && (shownJob.detailsMissing || !shownJob.description?.trim());
-  const canRefetch =
-    isEmptyDescription && currentSegment === 'review' && hasHttpUrl && onRefetchDescription !== undefined;
+  const isEmptyDescription = shownJob !== null && !shownJob.description?.trim();
+  const canRefetch = isEmptyDescription && shownJob?.detailsMissing && hasHttpUrl && onRefetchDescription !== undefined;
   const currentKey = shownJob?.key ?? null;
   const [blacklistOpenKey, setBlacklistOpenKey] = React.useState<string | null>(null);
   const blacklistOpen = currentKey !== null && blacklistOpenKey === currentKey;
@@ -449,7 +448,11 @@ export function DetailDialog({
                   <div data-posting-description="">
                     {isEmptyDescription ? (
                       <div className="flex flex-col items-start gap-sm">
-                        <p className="text-label text-muted-foreground italic">{copy.detail.missing_details}</p>
+                        <p className="text-label text-muted-foreground italic">
+                          {shownJob?.importedAt !== null || shownJob.reasons.includes('importata')
+                            ? copy.detail.imported_missing_details
+                            : copy.detail.missing_details}
+                        </p>
                         {canRefetch && (
                           <ActionButton
                             size="sm"

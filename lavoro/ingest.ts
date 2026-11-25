@@ -90,6 +90,7 @@ function readHistory(db: Db, items: readonly Item[]) {
       comparisonKey: jobs.comparisonKey,
       url: jobs.url,
       blacklistRule: jobs.blacklistRule,
+      detailsMissing: jobs.detailsMissing,
       firstSeen: jobs.firstSeen,
     })
     .from(jobs)
@@ -126,7 +127,8 @@ function readHistory(db: Db, items: readonly Item[]) {
 export function createKnown(db: Db, knownDays: number, now: () => number) {
   /** True for a URL saved in `jobs` or judged within `knownDays`; 0 days switches the cache off. */
   return (url: string) => {
-    if (db.select({ url: jobs.url }).from(jobs).where(eq(jobs.url, url)).get()) return true;
+    const saved = db.select({ detailsMissing: jobs.detailsMissing }).from(jobs).where(eq(jobs.url, url)).get();
+    if (saved) return !saved.detailsMissing;
     if (knownDays === 0) return false;
     const since = new Date(now() - knownDays * day);
     return Boolean(
@@ -167,10 +169,11 @@ export async function ingestSearch(ctx: IngestContext, cards: readonly Card[]) {
         )
       : new Set<string>();
   const items: Item[] = [];
+  const isKnown = createKnown(db, search.knownDays, ctx.now);
   for (const card of cards) {
     if (ctx.seen.has(card.url)) continue;
     ctx.seen.add(card.url);
-    if (cached.has(card.url)) continue;
+    if (cached.has(card.url) && isKnown(card.url)) continue;
     items.push({
       card,
       key: postingKey(card.company, card.title),
@@ -194,10 +197,17 @@ export async function ingestSearch(ctx: IngestContext, cards: readonly Card[]) {
     const { card } = item;
     const saved = [history.byUrl.get(card.url), history.byComparison.get(item.cmp)];
     const known =
-      saved.some((row) => row && row.blacklistRule === null) ||
+      saved.some(
+        (row) =>
+          row && row.blacklistRule === null && (!row.detailsMissing || (!item.description && !ctx.source?.describe)),
+      ) ||
       ctx.claimed.has(item.cmp) ||
       history.purged.has(item.key) ||
       ctx.blocked.has(comparisonCompany(card.company));
+    if (!known && saved.some((row) => row?.detailsMissing && row.blacklistRule === null)) {
+      candidates.push(item);
+      continue;
+    }
     const couldBeRemote =
       !item.description &&
       ctx.source?.describe !== undefined &&
@@ -249,7 +259,9 @@ export async function ingestSearch(ctx: IngestContext, cards: readonly Card[]) {
 
   const eligible: Item[] = [];
   for (const item of [...early, ...candidates]) {
-    if (!scorer.passesLocation({ ...item.card, description: item.description })) {
+    const recovering =
+      history.byUrl.get(item.card.url)?.detailsMissing || history.byComparison.get(item.cmp)?.detailsMissing;
+    if (!recovering && !scorer.passesLocation({ ...item.card, description: item.description })) {
       counts.outsideLocation++;
       if (!item.missing) dropped.push(item.card.url);
     } else eligible.push(item);
@@ -268,6 +280,7 @@ function commit(ctx: IngestContext, items: readonly Item[], dropped: readonly st
   const selected: Selected[] = [];
   const inserts: Array<typeof jobs.$inferInsert> = [];
   const replaces: Array<{ key: string; row: typeof jobs.$inferInsert }> = [];
+  const repairs: Array<{ key: string; row: Partial<typeof jobs.$inferInsert> }> = [];
   const judged = [...dropped];
   const misses: Array<typeof nearMisses.$inferInsert> = [];
   let excluded = 0;
@@ -277,13 +290,31 @@ function commit(ctx: IngestContext, items: readonly Item[], dropped: readonly st
   for (const item of items) {
     const { card } = item;
     const saved = [history.byUrl.get(card.url), history.byComparison.get(item.cmp)].filter((row) => row !== undefined);
-    // Saved or taken since step 2 by a search that finished first: nothing to add.
-    if (saved.some((row) => row.blacklistRule === null) || ctx.claimed.has(item.cmp) || history.purged.has(item.key)) {
-      judged.push(card.url);
+    if (ctx.claimed.has(item.cmp) || history.purged.has(item.key) || ctx.blocked.has(comparisonCompany(card.company)))
+      continue;
+    const existing = saved.find((row) => row.blacklistRule === null) ?? saved[0];
+    const result = scorer.score({ ...card, description: item.description });
+    if (existing?.blacklistRule === null) {
+      if (existing.detailsMissing && !item.missing && item.description) {
+        repairs.push({
+          key: existing.key,
+          row: {
+            description: item.description,
+            descriptionHtml: item.descriptionHtml ?? null,
+            detailsMissing: false,
+            score: result.score,
+            total: result.total,
+            reasons: result.reasons,
+            categories: scorer.categories({ ...card, description: item.description }),
+            workMode: result.workMode,
+            isRemote: result.workMode === 'remote',
+          },
+        });
+        ctx.claimed.add(item.cmp);
+        judged.push(card.url);
+      } else if (!existing.detailsMissing) judged.push(card.url);
       continue;
     }
-    const existing = saved[0];
-    const result = scorer.score({ ...card, description: item.description });
     const isSelected = scorer.isSelected(result);
     const rule = firstMatchingRule(rules, {
       ...card,
@@ -375,6 +406,7 @@ function commit(ctx: IngestContext, items: readonly Item[], dropped: readonly st
     const cache = profile.search.knownDays > 0 ? judged.map((url) => ({ url, seenAt: new Date(nowMs) })) : [];
     db.transaction((tx) => {
       // Updated in place: a delete would cascade to the saved Parere and bando text.
+      for (const { key, row } of repairs) tx.update(jobs).set(row).where(eq(jobs.key, key)).run();
       for (const { key, row } of replaces) tx.update(jobs).set(row).where(eq(jobs.key, key)).run();
       for (const row of inserts) tx.insert(jobs).values(row).run();
       // A posting that entered the list is no near miss any more.

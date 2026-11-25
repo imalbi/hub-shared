@@ -2723,7 +2723,9 @@ test('Scarta removes one near miss and Scarta tutti confirms before clearing the
   await expect(page.getByText('Nessun annuncio appena sotto soglia.')).toBeVisible();
 });
 
-test('Ricarica testo appears only on empty Da valutare postings and updates the detail', async ({ page }) => {
+test('missing descriptions distinguish imports, preserve stale-flag text and support targeted retry', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   let refetched = false;
   await page.route('**/trpc/*lavoro.list*', async (route) => {
@@ -2738,8 +2740,10 @@ test('Ricarica testo appears only on empty Da valutare postings and updates the 
         {
           ...base,
           key: 'refetch-empty-review',
+          importedAt: null,
           title: 'Offerta vuota da valutare',
           company: 'Alpha Srl',
+          site: 'indeed',
           url: 'https://example.com/jobs/1',
           description: refetched ? 'Testo recuperato dal sito.' : null,
           descriptionHtml: refetched ? '<p>Testo recuperato dal sito.</p>' : null,
@@ -2754,10 +2758,11 @@ test('Ricarica testo appears only on empty Da valutare postings and updates the 
           key: 'refetch-filled-review',
           title: 'Offerta con testo',
           company: 'Beta Srl',
+          site: 'indeed',
           url: 'https://example.com/jobs/2',
           description: 'Descrizione già presente.',
           descriptionHtml: null,
-          detailsMissing: false,
+          detailsMissing: true,
           application: null,
           archivedAt: null,
           deletedAt: null,
@@ -2766,8 +2771,10 @@ test('Ricarica testo appears only on empty Da valutare postings and updates the 
         {
           ...base,
           key: 'refetch-empty-applied',
+          importedAt: 1000,
           title: 'Candidatura vuota',
           company: 'Gamma Srl',
+          site: 'indeed',
           url: 'https://example.com/jobs/3',
           description: null,
           descriptionHtml: null,
@@ -2799,18 +2806,24 @@ test('Ricarica testo appears only on empty Da valutare postings and updates the 
   await page.getByText('Offerta con testo').first().click();
   const detail = page.locator('dialog[open]').first();
   await expect(detail.getByText('Descrizione già presente.')).toBeVisible();
-  await expect(detail.getByRole('button', { name: 'Ricarica testo' })).toHaveCount(0);
+  await expect(detail.getByRole('button', { name: 'Riprova scaricamento' })).toHaveCount(0);
   await detail.getByRole('button', { name: 'Chiudi' }).click();
 
   await page.getByText('Offerta vuota da valutare').first().click();
-  await expect(detail.getByRole('button', { name: 'Ricarica testo' })).toBeVisible();
-  await detail.getByRole('button', { name: 'Ricarica testo' }).click();
+  await expect(detail.getByRole('button', { name: 'Riprova scaricamento' })).toBeVisible();
+  await detail.getByRole('button', { name: 'Riprova scaricamento' }).click();
   await expect(detail.getByText('Testo recuperato dal sito.')).toBeVisible({ timeout: 10000 });
-  await expect(detail.getByRole('button', { name: 'Ricarica testo' })).toHaveCount(0);
+  await expect(detail.getByRole('button', { name: 'Riprova scaricamento' })).toHaveCount(0);
   await detail.getByRole('button', { name: 'Chiudi' }).click();
 
   await page.goto('/desk/ricerca?tab=candidature&candidature=all');
   await page.getByText('Candidatura vuota').first().click();
-  await expect(detail.getByText('Dettagli completi non disponibili dal sito sorgente.')).toBeVisible();
-  await expect(detail.getByRole('button', { name: 'Ricarica testo' })).toHaveCount(0);
+  await expect(
+    detail.getByText('Questa candidatura è stata importata senza la descrizione dell’offerta.'),
+  ).toBeVisible();
+  await expect(detail.getByText('Dettagli completi non disponibili dal sito sorgente.')).toHaveCount(0);
+  await expect(detail.getByRole('button', { name: 'Riprova scaricamento' })).toBeVisible();
+  await expect(
+    detail.getByText('Questa candidatura è stata importata senza la descrizione dell’offerta.').locator('..'),
+  ).toHaveScreenshot('lavoro-imported-description-empty.png');
 });

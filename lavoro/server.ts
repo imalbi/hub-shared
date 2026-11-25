@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { parseHTML } from 'linkedom';
 import { createLiveHub } from '../../apps/server/src/core/live.ts';
-import { defineModule, TRPCError, z, type MailThreadEntry } from '../../apps/server/src/core/module.ts';
+import { defineModule, pinnedRequest, TRPCError, z, type MailThreadEntry } from '../../apps/server/src/core/module.ts';
 import { and, desc, eq, inArray, isNull, sql } from '../../apps/server/src/core/module-db.ts';
 import { agentOrLoopbackProcedure, loopbackProcedure, router } from '../../apps/server/src/core/trpc.ts';
 import type { Db } from '../../apps/server/src/db/index.ts';
@@ -16,7 +16,7 @@ import { effectiveApplicationStatus, isActive } from './applications.ts';
 import { cleanHtml } from './clean-html.ts';
 import { runCollection, type CollectionKind, type CollectionStatus, type Progress } from './collect.ts';
 import { defaultTerminal, parereIntervalMs, profileSchema, type Profile } from './config.ts';
-import { fetchAndParsePosting } from './import-read.ts';
+import { assertPublicTarget, fetchAndParsePosting } from './import-read.ts';
 import { createIndeedSource } from './indeed.ts';
 import { createInpaSource } from './inpa.ts';
 import { createIrenSource } from './iren.ts';
@@ -83,6 +83,7 @@ import {
   purgedJobs,
   type ApplicationStatus,
 } from './schema.ts';
+import { MAX_SCRAPER_BYTES } from './bounded-fetch.ts';
 import { defaultClock, type Clock, type Source } from './source.ts';
 
 function postingAddresses(text: string | null) {
@@ -206,6 +207,7 @@ export type LavoroState =
       status: 'ready';
       queries: number;
       sources: string[];
+      descriptionSources: string[];
       /** The collection running now, with its progress. */
       collection: Progress | null;
       /** The last one that finished, a dry run included. */
@@ -478,6 +480,8 @@ export function createLavoroModule({
       const cleaner = parseHTML('<!doctype html><html><body></body></html>').document;
       const effectiveFetch = customFetch ?? fetch;
       let active: { controller: AbortController; progress: Progress | null; done: Promise<void> } | undefined;
+      let descriptionTurn = Promise.resolve();
+      let descriptionNext = 0;
       let dryRun: DryRunRow[] | null = null;
       let dryRunRequirements: Record<string, number> | null = null;
       let pareri: PareriState | null = null;
@@ -498,6 +502,7 @@ export function createLavoroModule({
           status: 'ready',
           queries: parsedProfile.data.search.queries.length,
           sources: parsedProfile.data.search.sites,
+          descriptionSources: sources.filter((source) => source.describe).map((source) => source.name),
           collection: active?.progress ?? null,
           last: last
             ? {
@@ -2361,9 +2366,10 @@ export function createLavoroModule({
                 workModeResolver,
               });
             }),
-          refetchDescription: loopbackProcedure
+          refetchDescription: agentOrLoopbackProcedure
             .input(z.object({ key: z.string().min(1) }))
-            .mutation(async ({ input }) => {
+            .mutation(async ({ ctx, input }) => {
+              forbidAgent(ctx);
               const validProfile = ready();
               const row = db.select().from(jobs).where(eq(jobs.key, input.key)).get();
               if (!row) throw new TRPCError({ code: 'NOT_FOUND', message: 'Annuncio non trovato' });
@@ -2372,11 +2378,34 @@ export function createLavoroModule({
               let description = '';
               let descriptionHtml: string | null = null;
               const describe = registry.get(row.site)?.describe;
-              if (describe) {
+              if (!describe)
+                throw new TRPCError({
+                  code: 'BAD_REQUEST',
+                  message: 'La sorgente non supporta il recupero della descrizione',
+                });
+              {
+                const previous = descriptionTurn;
+                let release = () => {};
+                descriptionTurn = new Promise<void>((resolve) => {
+                  release = resolve;
+                });
+                await previous;
                 const controller = new AbortController();
                 const sourceContext = {
                   signal: controller.signal,
-                  fetch: effectiveFetch,
+                  fetch: async (input: string | URL | Request, init?: RequestInit) => {
+                    const request = new Request(input, init);
+                    const target = await assertPublicTarget(new URL(request.url), lookup);
+                    if (request.method !== 'GET') throw new Error('Description requests must use GET');
+                    if (effectiveFetch !== globalThis.fetch)
+                      return effectiveFetch(request.url, { ...init, redirect: 'manual' });
+                    const response = await pinnedRequest(new URL(request.url), target, {
+                      headers: Object.fromEntries(request.headers),
+                      signal: AbortSignal.any([request.signal, AbortSignal.timeout(20000)]),
+                      maxBytes: MAX_SCRAPER_BYTES,
+                    });
+                    return new Response(response.text, { status: response.status, headers: response.headers });
+                  },
                   now: clock.now,
                   sleep: (ms: number) => clock.sleep(ms, controller.signal),
                   log,
@@ -2386,6 +2415,8 @@ export function createLavoroModule({
                   stable: validProfile.stable,
                 };
                 try {
+                  if (row.site === 'linkedin' && descriptionNext > clock.now())
+                    await clock.sleep(descriptionNext - clock.now(), controller.signal);
                   const result = await describe(
                     { url, title: row.title, company: row.company, location: row.location, site: row.site },
                     sourceContext,
@@ -2401,23 +2432,10 @@ export function createLavoroModule({
                     code: 'BAD_GATEWAY',
                     message: "Non è stato possibile leggere il testo dall'annuncio",
                   });
-                }
-              } else {
-                const workModeResolver = createWorkModeResolver(validProfile.patterns.workMode);
-                try {
-                  const parsed = await fetchAndParsePosting(url, cleaner, {
-                    fetch: effectiveFetch,
-                    lookup,
-                    workModeResolver,
-                  });
-                  description = parsed.description.trim();
-                  descriptionHtml = parsed.descriptionHtml.trim() || null;
-                } catch (error) {
-                  if (error instanceof TRPCError) throw error;
-                  throw new TRPCError({
-                    code: 'BAD_GATEWAY',
-                    message: "Non è stato possibile leggere il testo dall'annuncio",
-                  });
+                } finally {
+                  if (row.site === 'linkedin')
+                    descriptionNext = clock.now() + validProfile.search.linkedin.minIntervalSeconds * 1000;
+                  release();
                 }
               }
 
@@ -2444,20 +2462,22 @@ export function createLavoroModule({
                 description,
               });
 
-              db.update(jobs)
-                .set({
-                  description,
-                  descriptionHtml,
-                  detailsMissing: false,
-                  score: scored.score,
-                  total: scored.total,
-                  reasons: scored.reasons,
-                  categories,
-                  workMode: scored.workMode,
-                  isRemote: scored.workMode === 'remote',
-                })
-                .where(eq(jobs.key, row.key))
-                .run();
+              db.transaction(() => {
+                db.update(jobs)
+                  .set({
+                    description,
+                    descriptionHtml,
+                    detailsMissing: false,
+                    score: scored.score,
+                    total: scored.total,
+                    reasons: scored.reasons,
+                    categories,
+                    workMode: scored.workMode,
+                    isRemote: scored.workMode === 'remote',
+                  })
+                  .where(eq(jobs.key, row.key))
+                  .run();
+              });
 
               return { updated: true, key: row.key };
             }),

@@ -4,7 +4,18 @@ import { eq } from '../../apps/server/src/core/module-db.ts';
 import { createFakeSource, makeCard } from './fake-source.ts';
 import { capturingLog, createHarness, rows, testProfile } from './harness.ts';
 import { postingKey } from './key.ts';
-import { bandoTexts, blacklistRules, collections, jobs, knownUrls, opinions, purgedJobs } from './schema.ts';
+import {
+  bandoTexts,
+  blacklistRules,
+  collections,
+  jobs,
+  jobApplied,
+  jobArchive,
+  jobDeleted,
+  knownUrls,
+  opinions,
+  purgedJobs,
+} from './schema.ts';
 
 const day = 86_400_000;
 const titles = (h: ReturnType<typeof createHarness>) =>
@@ -762,4 +773,66 @@ void test('a replaced excluded row keeps its saved Parere and bando text', async
   assert.equal(rows(h.db)[0]?.blacklistRule, null);
   assert.equal(h.db.select().from(opinions).all().length, 1);
   assert.equal(h.db.select().from(bandoTexts).all().length, 1);
+});
+
+void test('rediscovered incomplete postings recover in place and complete postings are never refetched', async () => {
+  let text = '';
+  const source = createFakeSource({ catalog: () => [makeCard('indeed', 1)], describe: () => text });
+  const h = createHarness({ sources: [source] });
+  await h.collect();
+  const before = rows(h.db)[0];
+  assert.equal(before.detailsMissing, true);
+  const at = new Date(1234);
+  h.db.update(jobs).set({ importedAt: at }).where(eq(jobs.key, before.key)).run();
+  h.db.insert(jobApplied).values({ key: before.key, appliedAt: at, notes: 'Keep notes' }).run();
+  h.db.insert(jobArchive).values({ key: before.key, at }).run();
+  h.db.insert(jobDeleted).values({ key: before.key, at }).run();
+  h.db
+    .insert(opinions)
+    .values({ key: before.key, verdict: { ok: true }, model: 'm', inputHash: 'old', createdAt: at })
+    .run();
+  h.db
+    .insert(knownUrls)
+    .values({ url: before.url, seenAt: new Date(h.deps.clock.now()) })
+    .run();
+  const application = h.db.select().from(jobApplied).all();
+  const opinion = h.db.select().from(opinions).all();
+  await h.collect();
+  assert.deepEqual(rows(h.db)[0], { ...before, importedAt: at });
+  text = 'TypeScript React remote';
+  await h.collect();
+  const after = rows(h.db)[0];
+  assert.equal(after.description, text);
+  assert.equal(after.detailsMissing, false);
+  assert.equal(after.key, before.key);
+  assert.deepEqual(after.firstSeen, before.firstSeen);
+  assert.deepEqual(after.importedAt, at);
+  assert.deepEqual(h.db.select().from(jobApplied).all(), application);
+  assert.deepEqual(h.db.select().from(opinions).all(), opinion);
+  assert.deepEqual(h.db.select().from(jobArchive).all(), [{ key: before.key, at }]);
+  assert.deepEqual(h.db.select().from(jobDeleted).all(), [{ key: before.key, at }]);
+  assert.equal(source.record.described.length, 3);
+  await h.collect();
+  assert.equal(source.record.described.length, 3);
+});
+
+void test('rediscovery repairs an incomplete row from complete card text', async () => {
+  let recovered = false;
+  const source = createFakeSource({
+    catalog: () => [
+      makeCard('indeed', 1, recovered ? { description: 'TypeScript React remote', detailsMissing: false } : {}),
+    ],
+    describe: () => '',
+  });
+  const h = createHarness({ sources: [source] });
+  await h.collect();
+  const before = rows(h.db)[0];
+  assert.equal(before.detailsMissing, true);
+  recovered = true;
+  await h.collect();
+  const after = rows(h.db)[0];
+  assert.equal(after.key, before.key);
+  assert.equal(after.description, 'TypeScript React remote');
+  assert.equal(after.detailsMissing, false);
+  assert.equal(source.record.described.length, 1);
 });

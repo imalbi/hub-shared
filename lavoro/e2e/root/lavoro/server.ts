@@ -111,6 +111,7 @@ const baseModule = createLavoroModule({
     held(
       createFakeSource({
         name: 'indeed',
+        describe: () => 'Testo recuperato dal sito.',
         delayMs: 200,
         catalog: () => fakeCards.filter((c) => c.site === 'indeed'),
       }),

@@ -109,6 +109,7 @@ void test('a valid profile makes the module ready, with counts and source names 
     status: 'ready',
     queries: 2,
     sources: ['indeed', 'reteinformaticalavoro', 'linkedin'],
+    descriptionSources: ['linkedin'],
     collection: null,
     last: null,
     dryRun: null,
@@ -5091,7 +5092,13 @@ void test('refetchDescription fetches via source.describe, rescores in place, re
   assert.equal(before.detailsMissing, true);
   assert.equal(before.description, null);
 
-  const { phone, as } = await actors(t, serving);
+  const { phone, agent, as } = await actors(t, serving);
+  // Agent tokens authenticate only on MCP; this owner-only action has no tool metadata.
+  assert.equal(
+    (await as(agent, { method: 'POST', url: '/trpc/lavoro.refetchDescription', payload: { key: before.key } }))
+      .statusCode,
+    401,
+  );
   const refused = await as(phone, {
     method: 'POST',
     url: '/trpc/lavoro.refetchDescription',
@@ -5104,6 +5111,8 @@ void test('refetchDescription fetches via source.describe, rescores in place, re
   const unchanged = (await app.inject('/trpc/lavoro.list')).json().result.data.jobs[0];
   assert.equal(unchanged.detailsMissing, true);
 
+  await post('setApplication', { key: before.key, notes: 'Keep application notes' });
+  const applied = (await app.inject('/trpc/lavoro.list')).json().result.data.jobs[0];
   mode = 'ok';
   const ok = await post('refetchDescription', { key: before.key });
   assert.equal(ok.statusCode, 200);
@@ -5114,4 +5123,104 @@ void test('refetchDescription fetches via source.describe, rescores in place, re
   assert.equal(after.descriptionHtml, '<p>TypeScript e React in produzione.</p>');
   assert.ok(after.score > before.score);
   assert.ok(after.categories.includes('Frontend'));
+  assert.deepEqual(after.application, applied.application);
+  assert.equal(after.firstSeen, before.firstSeen);
+  const imported = await post('importSave', {
+    job: { title: 'Unsupported', company: 'Example', site: 'unknown', url: 'https://example.com/unsupported' },
+  });
+  const unsupported = await post('refetchDescription', { key: imported.json().result.data.key });
+  assert.equal(unsupported.statusCode, 400);
+  assert.match(unsupported.json().error.message, /sorgente/iu);
+});
+
+void test('description recovery preserves the saved opinion and reports its changed input as outdated', async (t) => {
+  let text = '';
+  const source = createFakeSource({ catalog: () => [makeCard('indeed', 1)], describe: () => text });
+  const profile = { ...testProfile(), parere: { key: 'invented-key', profile: 'Invented profile' } };
+  const fetch: typeof globalThis.fetch = async () =>
+    Response.json({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  verdict: 'alta',
+                  why: 'Adatto',
+                  fit: [],
+                  contro: [],
+                  next: 'Leggi',
+                  unverified: [],
+                  codes: [],
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    });
+  const { app, post, fake } = await serve(t, profile, { sources: [source], fetch });
+  await post('raccogli');
+  await fake.drain();
+  const before = (await app.inject('/trpc/lavoro.list')).json().result.data.jobs[0];
+  assert.equal((await post('requestOpinion', { key: before.key })).statusCode, 200);
+  const judged = (await app.inject('/trpc/lavoro.list')).json().result.data.jobs[0];
+  assert.equal(judged.opinion.outdated, false);
+  text = 'TypeScript React remote';
+  await post('raccogli');
+  await fake.drain();
+  const after = (await app.inject('/trpc/lavoro.list')).json().result.data.jobs[0];
+  assert.equal(after.key, before.key);
+  assert.equal(after.description, text);
+  assert.deepEqual(after.opinion, { ...judged.opinion, outdated: true });
+});
+
+void test('single-posting recovery refuses private DNS targets before issuing HTTP', async (t) => {
+  let fetching = false;
+  let requests = 0;
+  const source: Source = {
+    ...createFakeSource({ catalog: () => [makeCard('indeed', 1)] }),
+    describe: async (card, ctx) => (fetching ? (await ctx.fetch(card.url)).text() : ''),
+  };
+  const { app, post, fake } = await serve(t, testProfile(), {
+    sources: [source],
+    lookup: () => ['127.0.0.1'],
+    fetch: async () => {
+      requests++;
+      return new Response('TypeScript');
+    },
+  });
+  await post('raccogli');
+  await fake.drain();
+  const before = (await app.inject('/trpc/lavoro.list')).json().result.data.jobs[0];
+  fetching = true;
+  assert.equal((await post('refetchDescription', { key: before.key })).statusCode, 502);
+  assert.equal(requests, 0);
+  assert.deepEqual((await app.inject('/trpc/lavoro.list')).json().result.data.jobs[0], before);
+});
+
+void test('manual LinkedIn retries serialize and retain the configured pause between requests', async (t) => {
+  const starts: number[] = [];
+  const source: Source = {
+    ...createFakeSource({ name: 'linkedin', catalog: () => [] }),
+    describe: async (_card, ctx) => {
+      starts.push(ctx.now());
+      return 'TypeScript React';
+    },
+  };
+  const profile = testProfile();
+  const { app, post, fake } = await serve(t, profile, { sources: [source] });
+  const imported = await post('importSave', {
+    job: { title: 'Developer', company: 'Example', site: 'linkedin', url: 'https://www.linkedin.com/jobs/view/1' },
+  });
+  const key = imported.json().result.data.key;
+  const first = post('refetchDescription', { key });
+  const second = post('refetchDescription', { key });
+  await settle();
+  await fake.drain();
+  assert.equal((await first).statusCode, 200);
+  assert.equal((await second).statusCode, 200);
+  assert.equal(starts.length, 2);
+  assert.ok(starts[1] - starts[0] >= profile.search.linkedin.minIntervalSeconds * 1000);
+  assert.equal((await app.inject('/trpc/lavoro.list')).json().result.data.jobs.length, 1);
 });

@@ -1054,10 +1054,14 @@ export function RicercaZonePage() {
             showToast(copy.detail.toast_command_failed);
           }
         }}
-        onRefetchDescription={async (key) => {
-          await client.refetchDescription.mutate({ key });
-          await fetchData();
-        }}
+        onRefetchDescription={
+          lavoroState?.status === 'ready' && shownJob && lavoroState.descriptionSources.includes(shownJob.site)
+            ? async (key) => {
+                await client.refetchDescription.mutate({ key });
+                await fetchData();
+              }
+            : undefined
+        }
         applicationPanel={
           shownJob?.application ? (
             <ApplicationPanel
