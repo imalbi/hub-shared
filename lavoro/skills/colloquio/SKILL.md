@@ -20,7 +20,7 @@ Se il file non esiste: fermati, non chiamare nessuno strumento di Hub, e di' all
 1. `lavoro.posting` con la chiave (se hai un URL o un nome, cerca con `lavoro.shortlist` su `applied` e conferma con l'utente). Se `application` è nulla, fermati: non c'è una candidatura da preparare; usa `candidatura` o chiedi all'utente. Non chiamare nessuno strumento di Hub che modifichi annunci o candidature.
 2. Dalla candidatura prendi lo stato, le note e i colloqui (`interviews`: data e tipo): il prossimo colloquio fissa la fase (screening, tecnico, con il responsabile, finale). Se non c'è un colloquio o la fase non si capisce, chiedila all'utente. Gli oggetti delle mail collegate (`mail`: oggetto e data, mai il corpo) dicono cosa è già successo.
 3. Il Parere (`opinion`: Possibilità, `why`, `fit`, `contro`, `unverified`, `next`). Se `descriptionCut` è vero, dillo.
-4. Cosa è stato inviato: cerca in `<folder>/candidature/` la cartella dell'azienda e del ruolo (nomi in minuscolo, trattini) e leggi `annuncio.txt`, il `.tex` del CV e quello della lettera. Se non c'è, dillo e usa i sorgenti `.tex` della cartella: il CV inviato non è verificabile.
+4. Cosa è stato inviato: cerca in `<folder>/candidature/` la cartella dell'azienda e del ruolo (nomi in minuscolo, trattini) e leggi `annuncio.txt`, il `.tex` del CV (e quello della lettera, se presente). Se non c'è, dillo e usa i sorgenti `.tex` della cartella: il CV inviato non è verificabile.
 5. Il materiale dell'utente è la sola fonte dei fatti: i `.tex` nella cartella, più eventuali `profilo*.md`. Leggili per intero.
 
 ## 2. Scrivi `colloquio-<data>.md`
