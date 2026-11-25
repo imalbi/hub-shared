@@ -1,0 +1,8 @@
+{
+  "name": "hub-module-music",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "youtubei.js": "18.3.0"
+  }
+}

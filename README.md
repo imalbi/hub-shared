@@ -1,6 +1,6 @@
 # Hub Shared Modules
 
-Private catalog of trusted modules for Hub. Modules run inside the Hub server with its permissions: install only code you trust. No package installation or independent server is needed.
+Private catalog of trusted modules for Hub. Modules run inside the Hub server with its permissions: install only code you trust. Catalogo installs each module’s declared dependencies; no independent server is needed.
 
 ## Installation
 
@@ -38,3 +38,9 @@ Minimal example with invented values, using a source that needs no credential:
 The source toggles live in `search.sites`; Indeed additionally requires local `sources.indeed` credentials. Provider keys, mail accounts, professional profile and preferences belong only to local settings. Geographic and employer defaults inherited from the initial installation remain for now: review each enabled source's settings before sharing with another person. Automatic setup from a CV/profile is deferred.
 
 Removing or reinstalling Lavoro preserves its module database. Module code, migrations, tests and skills are versioned here; personal config, CVs, documents and databases are excluded. See [Lavoro](lavoro/README.md) and [skills](lavoro/skills/README.md).
+
+## Study and Music
+
+Studio (`study`, 1.0.0) owns study plans, materials, calendar/today contributions and its Panoramica widget. See [Study](study/README.md) and its [plan schema](study/plan.schema.json). Pomodoro remains in Hub core.
+
+Musica (`music`, 1.0.0) adds the YouTube library and queue to Media. It owns `youtubei.js` and serves authenticated artwork below `/m/music/cover`. System audio and the generic media player remain in core. Keep module names unchanged to reuse existing databases. Configuration belongs under `modules.study` and `modules.music`.

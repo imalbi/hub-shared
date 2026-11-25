@@ -19,7 +19,9 @@
       "description": "Casella di posta con feed, thread, composizione e notifiche.",
       "version": "1.0.0",
       "path": "mail",
-      "provides": ["mail"]
+      "provides": [
+        "mail"
+      ]
     },
     {
       "name": "sites",
@@ -34,6 +36,20 @@
       "description": "Previsioni locali e ricerca della città per Oggi.",
       "version": "1.0.0",
       "path": "weather"
+    },
+    {
+      "name": "study",
+      "title": "Studio",
+      "description": "Piani, materiali, ripasso e sessioni di studio.",
+      "version": "1.0.0",
+      "path": "study"
+    },
+    {
+      "name": "music",
+      "title": "Musica",
+      "description": "Ricerca, playlist e riproduzione musicale.",
+      "version": "1.0.0",
+      "path": "music"
     }
   ]
 }

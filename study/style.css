@@ -1,0 +1,17 @@
+.study-step {
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 0;
+}
+.study-step[data-current] {
+  background: var(--muted);
+  border-radius: var(--radius-sm);
+  padding-inline: 0.75rem;
+}
+.study-error {
+  opacity: 0;
+}
+.study-step[data-current] .study-error,
+.study-step:hover .study-error,
+.study-error:focus-visible {
+  opacity: 1;
+}

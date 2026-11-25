@@ -1,0 +1,57 @@
+{
+  "schema": "hub.study-plan/1",
+  "id": "example",
+  "title": "Piano di esempio",
+  "version": 1,
+  "subjects": [
+    { "id": "a", "name": "Botanica" },
+    { "id": "b", "name": "Astronomia" }
+  ],
+  "threads": [
+    { "id": "plants", "subject": "a", "title": "Piante" },
+    { "id": "stars", "subject": "b", "title": "Stelle" }
+  ],
+  "phases": [
+    { "id": "foundation", "title": "Fondamenti", "mix": { "a": 60, "b": 40 } },
+    { "id": "practice", "title": "Esercizi" }
+  ],
+  "method": ["Rivedi gli appunti."],
+  "days": [
+    {
+      "id": "A01",
+      "subject": "a",
+      "phase": "foundation",
+      "title": "La foglia",
+      "threads": ["plants"],
+      "recall": [],
+      "kind": "study",
+      "minutes": 60,
+      "blocks": [{ "id": "A01.m", "title": "Studio", "steps": [{ "id": "A01.m.1", "text": "Descrivi una foglia." }] }],
+      "check": "Ripeti i termini."
+    },
+    {
+      "id": "B01",
+      "subject": "b",
+      "phase": "foundation",
+      "title": "Il cielo",
+      "threads": ["stars"],
+      "recall": [],
+      "kind": "study",
+      "minutes": 60,
+      "blocks": [{ "id": "B01.m", "title": "Studio", "steps": [{ "id": "B01.m.1", "text": "Descrivi una stella." }] }],
+      "check": "Ripeti i termini."
+    },
+    {
+      "id": "A02",
+      "subject": "a",
+      "phase": "practice",
+      "title": "La radice",
+      "threads": ["plants"],
+      "recall": ["A01"],
+      "kind": "review",
+      "minutes": 60,
+      "blocks": [{ "id": "A02.m", "title": "Ripasso", "steps": [{ "id": "A02.m.1", "text": "Confronta le parti." }] }],
+      "check": "Rivedi gli appunti."
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+import { integer, primaryKey, sqliteTable, text } from '../../apps/server/src/core/module-db.ts';
+
+export const plans = sqliteTable('plans', {
+  id: text('id').primaryKey(),
+  version: integer('version').notNull(),
+  header: text('header').notNull(),
+  active: integer('active', { mode: 'boolean' }).notNull().default(false),
+});
+
+export const days = sqliteTable(
+  'days',
+  {
+    planId: text('plan_id').notNull(),
+    id: text('id').notNull(),
+    position: integer('position').notNull(),
+    data: text('data').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.planId, table.id] })],
+);
+
+export const progress = sqliteTable(
+  'progress',
+  {
+    planId: text('plan_id').notNull(),
+    kind: text('kind').notNull(),
+    id: text('id').notNull(),
+    value: text('value').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.planId, table.kind, table.id] })],
+);
+
+export const preferences = sqliteTable('preferences', {
+  planId: text('plan_id').primaryKey(),
+  weeklyHours: integer('weekly_hours'),
+  mix: text('mix'),
+});
