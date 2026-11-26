@@ -33,6 +33,7 @@ for (const kind of ['raccogli', 'prova']) {
         await page.getByRole('button', { name: 'Raccogli', exact: true }).click();
       }
       const label = kind === 'prova' ? 'Prova di raccolta' : 'Raccogli annunci';
+      const jobLabel = kind === 'prova' ? 'Prova raccolta' : 'Raccogli offerte';
       const ball = page.getByRole('button', { name: `Attività in corso: ${label}`, exact: true });
       await expect(ball).toBeVisible();
       await ball.click();
@@ -40,12 +41,12 @@ for (const kind of ['raccogli', 'prova']) {
       await expect(page.getByRole('button', { name: /Apri.*job/ })).toHaveCount(0);
       await page.getByRole('button', { name: `Apri ${label}`, exact: true }).click();
       await expect(page).toHaveURL(/\/desk\/system\?tab=jobs$/);
-      await expect(page.getByRole('button', { name: new RegExp(`lavoro\\.${kind} In esecuzione`) })).toBeVisible();
+      await expect(page.getByRole('button', { name: `${jobLabel} In esecuzione` })).toBeVisible();
+      await expect(page.getByText(`lavoro.${kind}`, { exact: true })).toHaveCount(0);
       await expect(page.getByText(/0\/\d+ ricerche/).first()).toBeVisible();
       await expect(ball).toBeVisible();
-      await page.screenshot({ path: '/tmp/hub-110-jobs-4k.png' });
       await holdButton(page, page.getByRole('button', { name: 'Tieni premuto per annullare job' }));
-      await expect(page.getByRole('button', { name: new RegExp(`lavoro\\.${kind} Annullato`) }).first()).toBeVisible();
+      await expect(page.getByRole('button', { name: `${jobLabel} Annullato` }).first()).toBeVisible();
       await expect(ball).toHaveCount(0);
     } finally {
       rmSync(holdFile, { force: true });
