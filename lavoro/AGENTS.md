@@ -30,3 +30,5 @@
 - `server.ts` tracks collection/prova and automatic Pareri with `deps.trackJob`; core cancellation must abort the same controller as the module action. `ui.tsx` activities claim the matching `jobAction` so the ball keeps one rich entry. Pass the injected clock to `sameCompanyApplications` so company badges and application lists age together.
 
 - Job output is readable by paired devices: Pareri logs contain aggregate counts and `opinionFailure` categories only, never posting keys, companies, roles, verdicts or provider response text.
+
+- Collection/prova and Pareri activity links open `/desk/system?tab=jobs` for progress, logs and cancellation; result links continue to open Ricerca.

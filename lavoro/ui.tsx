@@ -1167,7 +1167,7 @@ function useCollectionActivity(): ModuleActivity | null {
     label: kind === 'prova' ? copy.activity.prova : copy.activity.collect,
     detail: copy.activity.searches(Math.min(searchesDone, searchesTotal), searchesTotal),
     progress: searchesTotal > 0 ? Math.min(1, searchesDone / searchesTotal) : undefined,
-    href: '/desk/ricerca',
+    href: '/desk/system?tab=jobs',
   };
 }
 
@@ -1181,7 +1181,7 @@ function usePareriActivity(): ModuleActivity | null {
     label: copy.activity.pareri,
     detail: copy.pareri.running(done, done + remaining),
     progress: done + remaining > 0 ? done / (done + remaining) : undefined,
-    href: '/desk/ricerca',
+    href: '/desk/system?tab=jobs',
   };
 }
 

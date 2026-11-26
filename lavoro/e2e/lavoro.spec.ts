@@ -17,32 +17,42 @@ test.afterEach(async ({ pc }) => {
       await pc.post('/trpc/lavoro.addresses.remove', { data: { key: 'fake-interview-key', address: row.address } });
 });
 
-test('tracked collection has one rich activity and streams into Jobs until cancelled', async ({ page, pc }) => {
-  await page.setViewportSize({ width: 3840, height: 2160 });
-  await pc.post(`${SERVER_URL}/__fake/player`, { data: { gone: true } });
-  writeFileSync(holdFile, '');
-  try {
-    await page.goto('/desk/ricerca');
-    await page.getByRole('button', { name: 'Raccogli', exact: true }).click();
-    const ball = page.getByRole('button', { name: 'Attività in corso: Raccogli annunci', exact: true });
-    await expect(ball).toBeVisible();
-    await ball.click();
-    await expect(page.getByRole('button', { name: 'Apri Raccogli annunci', exact: true })).toHaveCount(1);
-    await expect(page.getByRole('button', { name: /Apri.*job/ })).toHaveCount(0);
-    await page.keyboard.press('Escape');
-    await page.goto('/desk/system?tab=jobs');
-    await expect(page.getByRole('button', { name: /lavoro\.raccogli In esecuzione/ })).toBeVisible();
-    await expect(page.getByText(/0\/\d+ ricerche/).first()).toBeVisible();
-    await expect(ball).toBeVisible();
-    await page.screenshot({ path: '/tmp/hub-110-jobs-4k.png' });
-    await holdButton(page, page.getByRole('button', { name: 'Tieni premuto per annullare job' }));
-    await expect(page.getByRole('button', { name: /lavoro\.raccogli Annullato/ }).first()).toBeVisible();
-    await expect(ball).toHaveCount(0);
-  } finally {
-    rmSync(holdFile, { force: true });
-    await pc.post(`${SERVER_URL}/__fake/player`, { data: { gone: false } });
-  }
-});
+for (const kind of ['raccogli', 'prova']) {
+  test(`tracked collection ${kind} has one rich activity and streams into Jobs until cancelled`, async ({
+    page,
+    pc,
+  }) => {
+    await page.setViewportSize({ width: 3840, height: 2160 });
+    await pc.post(`${SERVER_URL}/__fake/player`, { data: { gone: true } });
+    writeFileSync(holdFile, '');
+    try {
+      await page.goto('/desk/ricerca');
+      if (kind === 'prova') {
+        await pc.post('/trpc/lavoro.prova', { data: {} });
+      } else {
+        await page.getByRole('button', { name: 'Raccogli', exact: true }).click();
+      }
+      const label = kind === 'prova' ? 'Prova di raccolta' : 'Raccogli annunci';
+      const ball = page.getByRole('button', { name: `Attività in corso: ${label}`, exact: true });
+      await expect(ball).toBeVisible();
+      await ball.click();
+      await expect(page.getByRole('button', { name: `Apri ${label}`, exact: true })).toHaveCount(1);
+      await expect(page.getByRole('button', { name: /Apri.*job/ })).toHaveCount(0);
+      await page.getByRole('button', { name: `Apri ${label}`, exact: true }).click();
+      await expect(page).toHaveURL(/\/desk\/system\?tab=jobs$/);
+      await expect(page.getByRole('button', { name: new RegExp(`lavoro\\.${kind} In esecuzione`) })).toBeVisible();
+      await expect(page.getByText(/0\/\d+ ricerche/).first()).toBeVisible();
+      await expect(ball).toBeVisible();
+      await page.screenshot({ path: '/tmp/hub-110-jobs-4k.png' });
+      await holdButton(page, page.getByRole('button', { name: 'Tieni premuto per annullare job' }));
+      await expect(page.getByRole('button', { name: new RegExp(`lavoro\\.${kind} Annullato`) }).first()).toBeVisible();
+      await expect(ball).toHaveCount(0);
+    } finally {
+      rmSync(holdFile, { force: true });
+      await pc.post(`${SERVER_URL}/__fake/player`, { data: { gone: false } });
+    }
+  });
+}
 
 test('empty rules and an empty trial show their empty states', async ({ page }) => {
   await page.route('**/trpc/*', async (route) => {
@@ -350,6 +360,10 @@ test('Pareri mancanti shows progress and does not start twice', async ({ page, p
   await page.keyboard.press('Escape');
   const second = await pc.post('/trpc/lavoro.pareriMancanti', { data: {} });
   expect((await second.json()).result.data.started).toBe(false);
+  await page.getByRole('button', { name: /^Attività in corso: .*Pareri/ }).click();
+  await page.getByRole('button', { name: 'Apri Pareri', exact: true }).click();
+  await expect(page).toHaveURL(/\/desk\/system\?tab=jobs$/);
+  await expect(page.getByRole('button', { name: /lavoro\.pareri In esecuzione/ })).toBeVisible();
 });
 
 test('a verdict appears beside the score in cards and rows', async ({ page }) => {
