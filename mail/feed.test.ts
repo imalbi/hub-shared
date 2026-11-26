@@ -127,3 +127,16 @@ void test('an undated row and an out-of-order row lose nothing with two accounts
     b.map((row) => `b:${row.id}`),
   );
 });
+
+void test('an old date does not bury the newer suffix of its fetched page', async () => {
+  assert.deepEqual(
+    await walkBoxes(
+      {
+        a: [dated('old', 1), dated('new', 20), dated('next', 19)],
+        b: [dated('other', 18)],
+      },
+      4,
+    ),
+    ['a:old', 'a:new', 'a:next', 'b:other'],
+  );
+});

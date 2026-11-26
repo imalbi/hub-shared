@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { and, asc, count, desc, eq, isNotNull } from '../../apps/server/src/core/module-db.ts';
 import { favorites, history, playlists, playlistSongs, queueState, settings } from './schema.ts';
 import { createLiveHub } from '../../apps/server/src/core/live.ts';
-import { emptyQueue, queueReducer } from './queue.ts';
+import { emptyQueue, PLAYED_LIMIT, queueReducer } from './queue.ts';
 import { defineModule, TRPCError, z } from '../../apps/server/src/core/module.ts';
 import { protectedProcedure, router } from '../../apps/server/src/core/trpc.ts';
 import { registerMusicCoverRoute, type CoverImage } from './cover-route.ts';
@@ -26,7 +26,7 @@ const storedQueue = z.object({
   current: storedSong.nullable(),
   seed: storedSong.nullable(),
   upcoming: z.array(storedSong),
-  played: z.array(z.string()),
+  played: z.array(z.string()).transform((ids) => ids.slice(-PLAYED_LIMIT)),
   errors: z.number(),
 });
 type Ipc = Pick<ReturnType<typeof createMpvIpc>, 'request' | 'close' | 'events'>;
@@ -36,7 +36,7 @@ export function createMusicModule(options: { youtube?: YouTube; ipc?: Ipc } = {}
     name: 'music',
     migrations: fileURLToPath(new URL('./drizzle', import.meta.url)),
     create({ db, run, fetch, log }) {
-      const youtube = options.youtube ?? createYouTube();
+      const youtube = options.youtube ?? createYouTube(fetch);
       const ipc =
         options.ipc ??
         createMpvIpc(join(process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid?.() ?? 0}`, 'hub-music.sock'));
@@ -221,23 +221,32 @@ export function createMusicModule(options: { youtube?: YouTube; ipc?: Ipc } = {}
         };
       }
       const live = createLiveHub(publicQueue, null);
-      async function refill() {
-        if (!queue.current || queue.upcoming.length >= 3) return;
+      let refilling: number | undefined;
+      function refill() {
+        if (!queue.current || queue.upcoming.length >= 3 || refilling === generation) return;
         const version = generation;
+        refilling = version;
         const seed = queue.upcoming.at(-1)?.id ?? queue.current.id;
-        try {
-          const next = await youtube.upNext(seed);
-          if (version !== generation) return;
-          setQueue(
-            queueReducer(queue, {
-              type: 'refill',
-              songs: next.filter((song) => /^[A-Za-z0-9_-]{11}$/.test(song.id)),
+        // Remote work must not occupy the serialized player commands, especially stop.
+        void youtube
+          .upNext(seed)
+          .then((next) =>
+            schedule(async () => {
+              if (version !== generation || !queue.current) return;
+              setQueue(
+                queueReducer(queue, {
+                  type: 'refill',
+                  songs: next.filter((song) => /^[A-Za-z0-9_-]{11}$/.test(song.id)),
+                }),
+              );
+              await live.notify();
+              await appendNext(false);
             }),
-          );
-          await live.notify();
-        } catch {
-          log.warn('Music radio unavailable');
-        }
+          )
+          .catch(() => log.warn('Music radio unavailable'))
+          .finally(() => {
+            if (refilling === version) refilling = undefined;
+          });
       }
       let historyTimer: ReturnType<typeof setTimeout> | undefined;
       let historyGeneration = 0;
@@ -282,9 +291,9 @@ export function createMusicModule(options: { youtube?: YouTube; ipc?: Ipc } = {}
       // mpv's playlist index of the current song: its own start-file must never advance the queue, even when the
       // next song has the same URL (a playlist can hold one song twice in a row).
       let currentPos = -1;
-      async function appendNext() {
+      async function appendNext(requestRefill = true) {
         if (!queue.current) return;
-        if (queue.upcoming.length < 3) await refill();
+        if (requestRefill) refill();
         const next = queue.upcoming[0];
         if (next && appended !== next.id) {
           await ipc.request(['loadfile', `https://music.youtube.com/watch?v=${next.id}`, 'append']);
@@ -293,7 +302,11 @@ export function createMusicModule(options: { youtube?: YouTube; ipc?: Ipc } = {}
       }
       function schedule(operation: () => Promise<void>) {
         const result = operations.then(operation);
-        operations = result.catch(() => {});
+        // A failed command must not poison later commands; its caller handles the rejection.
+        operations = result.then(
+          () => undefined,
+          () => undefined,
+        );
         return result;
       }
       async function followStart() {
@@ -355,7 +368,7 @@ export function createMusicModule(options: { youtube?: YouTube; ipc?: Ipc } = {}
       ipc.events.on('event', onEvent);
       const playlistId = z.number().int().positive();
       const publicPlaylistId = z.string().regex(/^[A-Za-z0-9_-]{1,200}$/);
-      const position = z.number().int().nonnegative();
+      const itemId = z.number().int().positive();
       const songInput = z.object({
         id: z.string().regex(/^[A-Za-z0-9_-]{11}$/),
         title: z.string().min(1).max(500),
@@ -573,21 +586,24 @@ export function createMusicModule(options: { youtube?: YouTube; ipc?: Ipc } = {}
             }),
           removePlaylistSong: protectedProcedure
             .meta({ label: 'Rimuovi brano', description: 'Remove a playlist track' })
-            .input(z.object({ playlistId, position }))
+            .input(z.object({ playlistId, itemId }))
             .mutation(({ input }) => {
               const rows = getPlaylist(input.playlistId).songs;
-              if (input.position >= rows.length) throw new TRPCError({ code: 'NOT_FOUND' });
-              rows.splice(input.position, 1);
+              const index = rows.findIndex((row) => row.itemId === input.itemId);
+              if (index < 0) throw new TRPCError({ code: 'NOT_FOUND' });
+              rows.splice(index, 1);
               replacePlaylistSongs(input.playlistId, rows);
             }),
           movePlaylistSong: protectedProcedure
             .meta({ label: 'Sposta brano', description: 'Reorder a playlist track' })
-            .input(z.object({ playlistId, from: position, to: position }))
+            .input(z.object({ playlistId, itemId, toItemId: itemId }))
             .mutation(({ input }) => {
               const rows = getPlaylist(input.playlistId).songs;
-              if (input.from >= rows.length || input.to >= rows.length) throw new TRPCError({ code: 'NOT_FOUND' });
-              const [row] = rows.splice(input.from, 1);
-              if (row) rows.splice(input.to, 0, row);
+              const from = rows.findIndex((row) => row.itemId === input.itemId);
+              const to = rows.findIndex((row) => row.itemId === input.toItemId);
+              if (from < 0 || to < 0) throw new TRPCError({ code: 'NOT_FOUND' });
+              const [row] = rows.splice(from, 1);
+              if (row) rows.splice(to, 0, row);
               replacePlaylistSongs(input.playlistId, rows);
             }),
           favorites: protectedProcedure.query(() => db.select().from(favorites).orderBy(desc(favorites.addedAt)).all()),
@@ -788,6 +804,7 @@ export function createMusicModule(options: { youtube?: YouTube; ipc?: Ipc } = {}
         }),
         routes: (scope) => registerMusicCoverRoute(scope, readCoverById),
         close: () => {
+          generation++;
           cancelHistory();
           ipc.events.off('event', onEvent);
           ipc.close();

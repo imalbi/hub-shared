@@ -2077,7 +2077,7 @@ export function createLavoroModule({
                   if (!input.dryRun) {
                     if (!matchedJob) {
                       const finalUrl = rowUrl ?? `urn:import:${postKey}`;
-                      const appliedDate = new Date(`${row.date}T00:00:00.000Z`);
+                      const appliedDate = new Date(`${row.date}T00:00:00`);
                       tx.insert(jobs)
                         .values({
                           key: postKey,
@@ -2117,8 +2117,8 @@ export function createLavoroModule({
                       notes = notes ? `${notes} (data stimata)` : 'data stimata';
                     }
 
-                    const appliedAt = new Date(`${row.date}T00:00:00.000Z`);
-                    const closedAt = row.closed ? new Date(`${row.closed}T00:00:00.000Z`) : null;
+                    const appliedAt = new Date(`${row.date}T00:00:00`);
+                    const closedAt = row.closed ? new Date(`${row.closed}T00:00:00`) : null;
 
                     tx.insert(jobApplied)
                       .values({

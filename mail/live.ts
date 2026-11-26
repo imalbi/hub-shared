@@ -26,10 +26,12 @@ export type MailAccountState = {
   latest: MailMessage[];
 };
 export type MailState = { accounts: MailAccountState[] };
+export type MailSnapshot = { accounts: (MailAccountState & { window: MailMessage[] })[] };
 
-async function readAccount({ account, label }: MailAccount, run: Run): Promise<MailAccountState> {
+async function readAccount({ account, label }: MailAccount, run: Run): Promise<MailSnapshot['accounts'][number]> {
   const result = await himalaya(run, listArgs(account, 'INBOX', 1, UNREAD_WINDOW), envelopesSchema);
-  if (!result.ok) return { account, label, unread: null, capped: false, failure: result.failure, latest: [] };
+  if (!result.ok)
+    return { account, label, unread: null, capped: false, failure: result.failure, latest: [], window: [] };
   const messages = result.value.envelopes.map(toMessage);
   return {
     account,
@@ -38,10 +40,11 @@ async function readAccount({ account, label }: MailAccount, run: Run): Promise<M
     capped: messages.length >= UNREAD_WINDOW,
     failure: null,
     latest: messages.slice(0, LATEST_ROWS),
+    window: messages,
   };
 }
 
-export function readMailState(run: Run, accounts: readonly MailAccount[]): Promise<MailState> {
+export function readMailState(run: Run, accounts: readonly MailAccount[]): Promise<MailSnapshot> {
   return Promise.all(accounts.map((item) => readAccount(item, run))).then((states) => ({ accounts: states }));
 }
 

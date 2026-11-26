@@ -2378,6 +2378,62 @@ void test('imported interviews are local: midnight with no time, the given time 
   assert.equal(at('Con orario'), new Date(2026, 0, 21, 15, 30).getTime());
 });
 
+void test('imported application dates stay on their local day west of UTC', async (t) => {
+  const zone = process.env.TZ;
+  process.env.TZ = 'America/New_York';
+  t.after(() => {
+    if (zone === undefined) delete process.env.TZ;
+    else process.env.TZ = zone;
+  });
+  const { app } = await serve(t);
+  const fixture = [
+    {
+      company: 'Invented Corp',
+      role: 'Staff React Engineer',
+      channel: 'linkedin',
+      date: '2026-01-10',
+      status: 'colloquio',
+      interviews: [
+        { date: '2026-01-20', type: 'Senza orario' },
+        { date: '2026-01-21', time: '15:30', type: 'Con orario' },
+      ],
+    },
+  ];
+  const boundary = '----WebKitFormBoundaryLOCAL1';
+  const upload = await app.inject({
+    method: 'POST',
+    url: '/files',
+    headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+    payload: [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="applications-fixture.json"',
+      'Content-Type: application/json',
+      '',
+      JSON.stringify(fixture),
+      `--${boundary}--`,
+      '',
+    ].join('\r\n'),
+  });
+  const fileId = upload.json().fileId;
+  const imported = await app.inject({
+    method: 'POST',
+    url: '/trpc/lavoro.importApplications',
+    headers: { 'content-type': 'application/json' },
+    payload: JSON.stringify({ fileId, dryRun: false }),
+  });
+  assert.equal(imported.json().result.data.created, 1);
+  const list = (await app.inject('/trpc/lavoro.list')).json().result.data;
+  const importedJob = list.jobs.find((j: { company: string }) => j.company === 'Invented Corp');
+  assert.equal(new Date(importedJob.application.appliedAt).getDate(), 10);
+  assert.equal(new Date(importedJob.postedAt).getDate(), 10);
+  const interviews: { label: string; scheduledAt: number }[] = list.jobs.find(
+    (j: { company: string }) => j.company === 'Invented Corp',
+  ).application.interviews;
+  const at = (label: string) => interviews.find((i) => i.label === label)?.scheduledAt;
+  assert.equal(at('Senza orario'), new Date(2026, 0, 20).getTime());
+  assert.equal(at('Con orario'), new Date(2026, 0, 21, 15, 30).getTime());
+});
+
 void test('rules create / update / delete / setEnabled: each returns the row, list reflects changes', async (t) => {
   const { app, post } = await serve(t);
 

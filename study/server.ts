@@ -9,7 +9,7 @@ import { createLiveHub } from '../../apps/server/src/core/live.ts';
 import { loopbackProcedure, protectedProcedure, router } from '../../apps/server/src/core/trpc.ts';
 import { errorInput, readErrors, readReview, serializeError } from './errors.ts';
 import { listInbox, readPlan } from './inbox.ts';
-import { listMaterials, readMaterial } from './library.ts';
+import { listMaterials, createMaterialOpener } from './library.ts';
 import { planShape } from './plan.ts';
 import { activeHeaders, GLOBAL, readDays, readDaysById, readIndex, searchDays, subjectKey } from './read.ts';
 import { plans, preferences, progress } from './schema.ts';
@@ -34,6 +34,7 @@ export const studyModule = defineModule({
     })
     .default({ plansDir: '', materialDirs: [] }),
   create({ db, config, log, focusHistory }) {
+    const openMaterial = createMaterialOpener(config.materialDirs);
     const inboxDir = join(config.plansDir, 'in-arrivo');
     const archiveDir = join(config.plansDir, 'archivio');
     let watcher: FSWatcher | undefined;
@@ -90,10 +91,7 @@ export const studyModule = defineModule({
         openMaterial: protectedProcedure
           .meta({ label: 'Apri materiale', description: 'Open a PDF from the configured study material folders' })
           .input(z.object({ path: z.string().min(1), folder: z.int().min(0).optional() }))
-          .mutation(async ({ input, ctx }) => {
-            const file = await readMaterial(config.materialDirs, input.path, input.folder);
-            return ctx.files.put(file.bytes, { name: file.name, mime: 'application/pdf' });
-          }),
+          .mutation(({ input, ctx }) => openMaterial(ctx.files, input.path, input.folder)),
         inbox: protectedProcedure.query(inbox),
         onInbox: protectedProcedure.subscription(({ signal }) => live.subscribe(signal)),
         active: protectedProcedure.query(() => activeHeaders(db)),

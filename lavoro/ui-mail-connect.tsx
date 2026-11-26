@@ -1,3 +1,4 @@
+import { addDays, localDay } from '../../apps/web/src/lib/day.ts';
 import { useState } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { Dialog } from '../../apps/web/src/components/ui/dialog.tsx';
@@ -26,7 +27,7 @@ export function ConnectMail({
   const trpc = useMailTRPC();
   const cache = useQueryClient();
   const term = search.trim() || company;
-  const after = new Date(appliedAt - 3 * 86_400_000).toISOString().slice(0, 10);
+  const after = addDays(localDay(new Date(appliedAt)), -3);
   const dateFilter = search.trim() ? {} : { after };
   const queries = useQueries({
     queries: accounts.flatMap(({ account }) =>

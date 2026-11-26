@@ -55,18 +55,17 @@ export async function nextFeed(
   async function load(side: Side): Promise<MailResult<true>> {
     const result = await fetchPage(side.account, side.page);
     if (!result.ok) return result;
-    const timed = result.value.map((row) => {
-      const own = timeOf(row);
-      // An undated row sorts as its predecessor (as the oldest when it opens the listing).
-      const time =
-        own === Number.NEGATIVE_INFINITY
-          ? side.last === Number.POSITIVE_INFINITY
-            ? own
-            : side.last
-          : Math.min(own, side.last);
-      side.last = time;
-      return { row, time };
-    });
+    // Suffix maxima preserve the account prefix without burying newer rows after an old sender date.
+    // shortcut: a newer date on a later page remains capped by the previous page; global sorting needs server cursors.
+    let suffix = Number.NEGATIVE_INFINITY;
+    const timed = result.value.map((row) => ({ row, time: timeOf(row) }));
+    for (let index = timed.length - 1; index >= 0; index--) {
+      const entry = timed[index];
+      if (!entry) continue;
+      suffix = Math.max(suffix, entry.time);
+      entry.time = Math.min(suffix, side.last);
+    }
+    side.last = timed.at(-1)?.time ?? side.last;
     side.rows.push(...timed.slice(side.skip));
     side.skip = 0;
     side.exhausted = result.value.length < size;

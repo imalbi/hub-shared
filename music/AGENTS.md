@@ -16,3 +16,5 @@
 - `ui.tsx` contributes the Media fill tab, floating player and large-widget `mediaUpcoming` content; core Media supplies its fallback when no module contributes a tab. `e2e/root/music` owns all Music IPC/YouTube/artwork fixtures, with no live network or desktop commands.
 
 - `server.test.ts` preserves registry metadata/schema coverage for all Music mutations and rejects playlist deletion without explicit confirmation. Core router counts exclude Music.
+
+- `mpv-ipc.ts` connects on startup and retries idle disconnects; close cancels retries. Radio refill runs outside the serialized player queue and applies only within its generation. Playlist edits address persistent `itemId` values (including duplicate songs), never positions; preserve those IDs when rewriting dense positions.

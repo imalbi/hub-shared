@@ -1,4 +1,6 @@
 export const m = {
+  study_material_popup_blocked: () => 'Consenti i popup per aprire il materiale.',
+  study_material_unavailable: () => 'Materiale non disponibile. Riprova.',
   study_today_tab: () => 'Oggi',
   calendar_kind_study: () => 'Studio',
   calendar_study_done: () => 'Studio, fatto',

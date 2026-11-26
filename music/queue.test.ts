@@ -57,12 +57,24 @@ void test('a single played song seeds the radio; a playlist, the end and errors 
   assert.equal(queueReducer(emptyQueue, { type: 'load', songs: ['a', 'b'].map(song) }).seed, null);
 });
 
-void test('stop empties the queue and remembers the song that was playing as played', () => {
+void test('stop clears the radio history so another radio starts fresh', () => {
   let state = queueReducer(emptyQueue, { type: 'play', song: song('a') });
   state = queueReducer(state, { type: 'refill', songs: ['b', 'c'].map(song) });
   state = queueReducer(state, { type: 'stop' });
   assert.equal(state.current, null);
   assert.equal(state.seed, null);
   assert.deepEqual(state.upcoming, []);
-  assert.deepEqual(state.played, ['a']);
+  assert.deepEqual(state.played, []);
+});
+
+void test('radio history stays bounded and new playback resets it', () => {
+  let state = queueReducer(emptyQueue, { type: 'play', song: song('0') });
+  for (let i = 1; i <= 300; i++) {
+    state = queueReducer(state, { type: 'refill', songs: [song(String(i))] });
+    state = queueReducer(state, { type: 'advance', error: false });
+  }
+  assert.equal(state.played.length, 200);
+  assert.equal(state.played[0], '100');
+  assert.deepEqual(queueReducer(state, { type: 'play', song: song('new') }).played, []);
+  assert.deepEqual(queueReducer(state, { type: 'load', songs: [song('new')] }).played, []);
 });

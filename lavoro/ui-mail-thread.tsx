@@ -1,3 +1,4 @@
+import { addDays, localDay } from '../../apps/web/src/lib/day.ts';
 import { LoadingSkeleton } from '../../apps/web/src/components/ui/loading-skeleton.tsx';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,7 +25,7 @@ function ThreadMessage({ account, message }: { account: string; message: MailThr
     retry: false,
     queryFn: async () => {
       if (!message.date) return null;
-      const after = new Date(new Date(message.date).getTime() - 86_400_000).toISOString().slice(0, 10);
+      const after = addDays(localDay(new Date(message.date)), -1);
       for (let page = 1; page <= 8; page++) {
         const rows: MailMessage[] = await cache.fetchQuery(
           mail.search.queryOptions({ account, mailbox, filter: { after }, page }, { retry: false }),

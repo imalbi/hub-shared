@@ -85,3 +85,22 @@ test('today links a PDF page and starts focus for its day', async ({ page, pc })
     db.close();
   }
 });
+
+for (const viewport of [
+  { width: 3840, height: 2160 },
+  { width: 375, height: 812 },
+]) {
+  test(`material failures use Italian copy at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto('/desk/studio?tab=libreria');
+    await page.getByRole('textbox', { name: 'Cerca materiale' }).fill('dispensa');
+    await page.evaluate(() => {
+      window.open = () => null;
+    });
+    await page.getByRole('button', { name: 'Apri', exact: true }).click();
+    await expect(page.getByText('Consenti i popup per aprire il materiale.', { exact: true })).toBeVisible();
+    await page.route('**/trpc/*study.openMaterial*', (route) => route.abort());
+    await page.getByRole('button', { name: 'Scarica', exact: true }).click();
+    await expect(page.getByText('Materiale non disponibile. Riprova.', { exact: true })).toBeVisible();
+  });
+}

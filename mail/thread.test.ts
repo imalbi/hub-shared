@@ -175,3 +175,21 @@ void test('automated senders, missing addresses and short subjects do not join b
   );
   assert.equal(threadOf(short, 'a@example.com')?.messages.length, 1);
 });
+
+void test('thread chronology uses UTC instants and ignores invalid dates for waiting', () => {
+  const sent = { ...question, date: '2026-11-04T10:00:00+02:00' };
+  const received = { ...reply, date: '2026-11-04T09:00:00Z' };
+  const invalid = {
+    ...question,
+    id: 'bad',
+    messageId: 'bad@example.org',
+    inReplyTo: [question.messageId ?? ''],
+    date: 'invalid',
+  };
+  const thread = threadOf([invalid, received, sent], question.messageId ?? '');
+  assert.deepEqual(
+    thread?.messages.map((message) => message.id),
+    ['42', '308', 'bad'],
+  );
+  assert.equal(thread?.waiting, false);
+});

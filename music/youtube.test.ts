@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { Parser, YTNodes } from 'youtubei.js';
-import { mapArtist, mapPlaylist, mapRelated, mapSongs } from './youtube.ts';
+import { createYouTube, mapArtist, mapPlaylist, mapRelated, mapSongs } from './youtube.ts';
 
 void test('maps playlist header and songs from youtubei nodes', () => {
   const header = new YTNodes.MusicResponsiveHeader({
@@ -121,4 +121,24 @@ void test('M4: mapRelated reads related artists from a localized fixture ignorin
       cover: 'https://lh3.googleusercontent.com/example-artist-3-544',
     },
   ]);
+});
+
+void test('YouTube initialization and requests use a bounded abort signal', async (t) => {
+  const aborted = AbortSignal.abort(new DOMException('timed out', 'TimeoutError'));
+  const deadlines: number[] = [];
+  t.mock.method(AbortSignal, 'timeout', (ms: number) => {
+    deadlines.push(ms);
+    return aborted;
+  });
+  let requests = 0;
+  const youtube = createYouTube(async (_input, init) => {
+    requests++;
+    assert.ok(init?.signal, 'every remote request needs a deadline');
+    init.signal.throwIfAborted();
+    throw new Error('expected an aborted signal');
+  });
+  await assert.rejects(youtube.search('test'));
+  assert.ok(requests > 0);
+  assert.ok(deadlines.length > 0);
+  assert.ok(deadlines.every((ms) => ms === 10_000));
 });

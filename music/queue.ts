@@ -9,17 +9,18 @@ type Action =
   | { type: 'advance'; error: boolean }
   | { type: 'stop' };
 
+export const PLAYED_LIMIT = 200;
+
 export const emptyQueue: Queue = { current: null, seed: null, upcoming: [], played: [], errors: 0 };
 
 export function queueReducer(state: Queue, action: Action): Queue {
-  if (action.type === 'stop')
-    return { ...emptyQueue, played: state.current ? [...state.played, state.current.id] : state.played };
+  if (action.type === 'stop') return { ...emptyQueue };
   if (action.type === 'load')
     return {
       current: action.songs[0] ?? null,
       seed: action.songs.length === 1 ? (action.songs[0] ?? null) : null,
       upcoming: action.songs.slice(1),
-      played: state.current ? [...state.played, state.current.id] : state.played,
+      played: [],
       errors: 0,
     };
   if (action.type === 'play')
@@ -27,7 +28,7 @@ export function queueReducer(state: Queue, action: Action): Queue {
       current: action.song,
       seed: action.song,
       upcoming: [],
-      played: state.current ? [...state.played, state.current.id] : state.played,
+      played: [],
       errors: 0,
     };
   if (action.type === 'refill') {
@@ -47,7 +48,7 @@ export function queueReducer(state: Queue, action: Action): Queue {
     current,
     seed: current ? state.seed : null,
     upcoming: errors >= 3 ? [] : state.upcoming.slice(1),
-    played: state.current ? [...state.played, state.current.id] : state.played,
+    played: (state.current ? [...state.played, state.current.id] : state.played).slice(-PLAYED_LIMIT),
     errors,
   };
 }

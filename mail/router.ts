@@ -40,7 +40,7 @@ import {
   type MailFailure,
   type MailResult,
 } from './himalaya.ts';
-import { readMailState, type MailLive, type MailState } from './live.ts';
+import { readMailState, type MailLive, type MailState, type MailSnapshot } from './live.ts';
 import { threadOf, type ThreadEntry } from './thread.ts';
 
 // Messages are never inbox-only for threads: the sent mailbox is the owner's side of the conversation.
@@ -101,9 +101,12 @@ export async function listThreadEntries(
 }
 
 /** A paired device gets the counts only: account names, labels, senders and subjects stay on the PC. */
-function forClient(state: MailState, kind: string): MailState {
-  if (kind === 'loopback') return state;
-  return { accounts: state.accounts.map((account, index) => ({ ...account, ...anonymous(index), latest: [] })) };
+function forClient(state: MailSnapshot, kind: string): MailState {
+  return {
+    accounts: state.accounts.map(({ window: _window, ...account }, index) =>
+      kind === 'loopback' ? account : { ...account, ...anonymous(index), latest: [] },
+    ),
+  };
 }
 
 const anonymous = (index: number) => ({ account: `#${index + 1}`, label: '' });

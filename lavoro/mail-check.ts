@@ -6,7 +6,7 @@ import type {
 } from '../../apps/server/src/core/module.ts';
 import type { llmGate } from '../../apps/server/src/core/llm-gate.ts';
 import { z } from '../../apps/server/src/core/module.ts';
-import { and, desc, eq, inArray, isNull } from '../../apps/server/src/core/module-db.ts';
+import { and, desc, eq, inArray, isNull, isNotNull, lt, sql } from '../../apps/server/src/core/module-db.ts';
 import type { Db } from '../../apps/server/src/db/index.ts';
 import { localDay } from '../../apps/web/src/lib/day.ts';
 import { isActive } from './applications.ts';
@@ -366,6 +366,22 @@ export async function runMailCheck(
 ): Promise<MailCheckResult & { reason: string | null }> {
   const { db, mail, config } = deps;
   const result = { checked: 0, linked: 0, suggested: 0, proposed: 0, reason: null as string | null };
+  const retention = new Date(deps.now() - (Math.max(config.windowDays, config.todoDays) + 30) * 86_400_000);
+  db.delete(mailChecked)
+    .where(
+      and(
+        eq(mailChecked.outcome, 'read'),
+        lt(mailChecked.checkedAt, retention),
+        sql`not exists (select 1 from ${jobMailLink} where ${jobMailLink.account} = ${mailChecked.account} and ${jobMailLink.messageId} = ${mailChecked.messageId})`,
+        sql`not exists (select 1 from ${mailProposals} where ${mailProposals.account} = ${mailChecked.account} and ${mailProposals.messageId} = ${mailChecked.messageId} and ${mailProposals.resolution} is null)`,
+      ),
+    )
+    .run();
+  db.delete(mailProposals)
+    .where(
+      and(isNotNull(mailProposals.resolution), lt(mailProposals.createdAt, new Date(deps.now() - 90 * 86_400_000))),
+    )
+    .run();
   const after = windowStart(config.windowDays, new Date(deps.now()));
   const allCandidates = openCandidates(db, Number.MAX_SAFE_INTEGER);
   const baseCandidates = allCandidates.slice(0, MAX_CANDIDATES);
@@ -429,7 +445,7 @@ export async function runMailCheck(
     const [owner] = [...owners];
     const matched =
       !alreadyOwned && owners.size === 1 ? allCandidates.find((candidate) => candidate.key === owner) : undefined;
-    if (matched) {
+    if (matched && db.select().from(jobApplied).where(eq(jobApplied.key, matched.key)).get()) {
       const inserted = db
         .insert(jobMailLink)
         .values({ key: matched.key, account, messageId, linkedAt: new Date(deps.now()), linkReason: 'address' })
@@ -509,7 +525,7 @@ export async function runMailCheck(
         .onConflictDoNothing()
         .run();
       result.checked++;
-      if (decision.link) {
+      if (decision.link && tx.select().from(jobApplied).where(eq(jobApplied.key, decision.link)).get()) {
         // Never persist model-discovered thread addresses until the owner explicitly accepts or manually links.
         tx.insert(jobMailLink)
           .values({ key: decision.link, account, messageId, linkedAt: new Date(deps.now()), linkReason: 'model' })
@@ -517,7 +533,7 @@ export async function runMailCheck(
           .run();
         result.linked++;
       }
-      if (decision.suggest) {
+      if (decision.suggest && tx.select().from(jobApplied).where(eq(jobApplied.key, decision.suggest)).get()) {
         result.suggested += Number(
           tx
             .insert(mailProposals)

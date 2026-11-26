@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { eq } from '../../apps/server/src/core/module-db.ts';
 import { fileURLToPath } from 'node:url';
 import type { MailCapability, MailThreadEntry } from '../../apps/server/src/core/module.ts';
 import { createLlmGate } from '../../apps/server/src/core/llm-gate.ts';
@@ -697,3 +698,83 @@ void test('the application day the model sees is the local one: 00:30 local on t
     else process.env.TZ = zone;
   }
 });
+
+void test('mail retention removes old unlinked reads and resolved proposals, preserving links and pending work', async () => {
+  const s = setup();
+  s.deps.mail.listThreadEntries = async () => ({ entries: [], truncated: false });
+  const old = new Date(now - 100 * 86_400_000);
+  for (const messageId of ['old', 'linked', 'pending', 'invalid', 'recent'])
+    s.db
+      .insert(mailChecked)
+      .values({
+        account: 'work',
+        messageId,
+        subject: 'Fixture',
+        sender: '',
+        checkedAt: messageId === 'recent' ? new Date(now) : old,
+        receivedAt: old,
+        outcome: messageId === 'invalid' ? 'invalid' : 'read',
+      })
+      .run();
+  s.db
+    .insert(jobMailLink)
+    .values({ key: 'acme', account: 'work', messageId: 'linked', linkedAt: old, linkReason: 'model' })
+    .run();
+  for (const messageId of ['pending', 'resolved'])
+    s.db
+      .insert(mailProposals)
+      .values({
+        kind: 'link',
+        key: 'acme',
+        account: 'work',
+        messageId,
+        subject: 'Fixture',
+        why: 'Fixture',
+        createdAt: old,
+        resolution: messageId === 'resolved' ? 'dismissed' : null,
+      })
+      .run();
+  await s.run();
+  assert.deepEqual(
+    s.db
+      .select()
+      .from(mailChecked)
+      .all()
+      .map((row) => row.messageId)
+      .toSorted(),
+    ['invalid', 'linked', 'pending', 'recent'],
+  );
+  assert.deepEqual(
+    proposals(s.db).map((row) => row.messageId),
+    ['pending'],
+  );
+});
+
+for (const confidence of ['alta', 'media']) {
+  void test(`deleted application cannot receive a ${confidence} model link or proposal`, async () => {
+    const s = setup({
+      config: { maxPerRun: 1 },
+      sender: 'hr@acme.example',
+      bodies: { '310': 'Acme Corp propone un colloquio.' },
+      answers: {
+        'Offerta di colloquio': {
+          application: 'A1',
+          confidence: confidence === 'alta' ? 'alta' : 'media',
+          kind: 'invito',
+        },
+      },
+    });
+    addApplication(s.db, 'acme', 'Acme Corp');
+    const fetcher = s.deps.fetch;
+    s.deps.fetch = async (...args) => {
+      const response = await fetcher(...args);
+      s.db.delete(jobApplied).where(eq(jobApplied.key, 'acme')).run();
+      return response;
+    };
+    const result = await s.run();
+    assert.equal(result.checked, 1);
+    assert.deepEqual(links(s.db), []);
+    assert.deepEqual(proposals(s.db), []);
+    assert.deepEqual(s.db.select().from(applicationAddress).all(), []);
+  });
+}

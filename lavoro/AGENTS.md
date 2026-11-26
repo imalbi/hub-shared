@@ -22,3 +22,5 @@
 - `config.ts`: source scopes stay under `search.<site>` and are required when enabled globally or by a query override; personal geographic/employer defaults are forbidden. `harness.ts` supplies explicit invented source scopes for fixtures.
 
 - `ingest.ts`: incomplete non-blacklisted rows bypass the known-URL cache on rediscovery. Repair them in place only after recovering text (including card text); failed retries preserve the entire saved row and related state. Complete rows remain known. A source missing flag may indicate a partial abstract (Iren/Oracle), so text alone must not clear it.
+
+- `mail-check.ts` prunes old unlinked read markers outside the configured windows plus 30 days, preserves unresolved proposal references, and expires resolved proposals by creation age after 90 days. Recheck application existence after model awaits before links/proposals are written. Imported date-only values and mail search boundaries use local calendar days.

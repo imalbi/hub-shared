@@ -49,8 +49,21 @@ void test('playlists keep dense positions when songs are reordered and removed',
   ]) {
     assert.equal((await mutate('addToPlaylist', { playlistId, id, title, artist: 'Artist' })).statusCode, 200);
   }
-  assert.equal((await mutate('movePlaylistSong', { playlistId, from: 2, to: 0 })).statusCode, 200);
-  assert.equal((await mutate('removePlaylistSong', { playlistId, position: 1 })).statusCode, 200);
+  const initial = (
+    await app.inject('/trpc/music.playlist?input=' + encodeURIComponent(JSON.stringify({ id: playlistId })))
+  ).json().result.data.songs;
+  const [first, second, third] = initial;
+  assert.equal(
+    (await mutate('movePlaylistSong', { playlistId, itemId: third.itemId, toItemId: first.itemId })).statusCode,
+    200,
+  );
+  assert.equal((await mutate('removePlaylistSong', { playlistId, itemId: first.itemId })).statusCode, 200);
+  // A stale browser action must never remove the row now occupying the old position.
+  assert.equal((await mutate('removePlaylistSong', { playlistId, itemId: first.itemId })).statusCode, 404);
+  assert.equal(
+    (await mutate('movePlaylistSong', { playlistId, itemId: second.itemId, toItemId: first.itemId })).statusCode,
+    404,
+  );
   const list = await app.inject('/trpc/music.playlist?input=' + encodeURIComponent(JSON.stringify({ id: playlistId })));
   assert.deepEqual(
     list.json().result.data.songs.map(({ id, position }: { id: string; position: number }) => [id, position]),
@@ -708,4 +721,31 @@ void test('deleting a playlist requires explicit confirmation', async (t) => {
   assert.equal((await call({ id: 999 })).statusCode, 412);
   assert.equal((await call({ id: 999, confirmed: false })).statusCode, 412);
   assert.equal((await call({ id: 999, confirmed: true })).statusCode, 404);
+});
+
+void test('a hanging radio refill cannot block stop or restore a stopped queue', async (t) => {
+  let release: ((songs: Awaited<ReturnType<typeof wiring.youtube.upNext>>) => void) | undefined;
+  const waiting = new Promise<Awaited<ReturnType<typeof wiring.youtube.upNext>>>((resolve) => {
+    release = resolve;
+  });
+  const app = buildServer({
+    dbPath: ':memory:',
+    music: {
+      ...wiring,
+      youtube: { ...wiring.youtube, upNext: () => waiting },
+    },
+    deps: { run: createFakeDesktop() },
+  });
+  t.after(() => app.close());
+  const play = app.inject({ method: 'POST', url: '/trpc/music.play', payload: { id: 'abcdefghijk' } });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const stopped = await Promise.race([
+    app.inject({ method: 'POST', url: '/trpc/music.stop', payload: {} }),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 200)),
+  ]);
+  release?.(await wiring.youtube.upNext());
+  await play;
+  assert.ok(stopped, 'stop must not wait for YouTube');
+  assert.equal(stopped.statusCode, 200);
+  assert.equal((await app.inject('/trpc/music.queue')).json().result.data.current, null);
 });

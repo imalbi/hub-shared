@@ -18,3 +18,5 @@
 - `ui.tsx` supplies the Studio zone, day line, calendar/today/record contributions and widgets. Core Pomodoro stays shared; tests use `test-server.ts` and the isolated `e2e/root/study` wrapper. The installed copy must retain its two-level relative imports; do not symlink it to the catalog checkout.
 
 - `today-note-draft.ts` tracks the last observed server text separately from saved local text: a new query snapshot updates clean drafts only, preserving dirty, failed and pending edits. An unchanged old snapshot must not undo a successful save before its refetch arrives. Notes refetch on Oggi mount; there is no live progress subscription.
+
+- `library.ts` caches at most 50 material file promises by canonical path and size/mtime/ctime, rechecks configured containment and the 100 MiB bound on every request, and renews expired tmpfs handles. Cache metadata only, never buffers. `material.tsx` reports Italian popup/download failures through an alert because RegistryButton exposes only a generic error label.

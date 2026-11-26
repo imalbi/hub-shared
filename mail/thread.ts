@@ -38,11 +38,11 @@ export function normalizeSubject(subject: string): string {
   return normalized.replace(/\s+@\s+.+$/, '').trim();
 }
 
-const byDate = (a: ThreadEntry, b: ThreadEntry) => {
-  if (a.date === null) return b.date === null ? 0 : 1;
-  if (b.date === null) return -1;
-  return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+const timestamp = (entry: ThreadEntry) => {
+  const time = entry.date === null ? Number.NaN : Date.parse(entry.date);
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
 };
+const byDate = (a: ThreadEntry, b: ThreadEntry) => timestamp(a) - timestamp(b);
 
 /**
  * The thread that holds `messageId`, from the inbox and sent listings of one account. Messages without a Message-ID
@@ -69,7 +69,8 @@ export function threadOf(entries: readonly ThreadEntry[], messageId: string): Th
     .filter((entry) => entry.messageId !== null && groups.find(entry.messageId) === root)
     .toSorted(byDate);
   const last = messages.findLast(
-    (entry) => entry.date !== null && !(entry.mailbox === 'sent' && calendarReply.test(entry.subject.trim())),
+    (entry) =>
+      Number.isFinite(timestamp(entry)) && !(entry.mailbox === 'sent' && calendarReply.test(entry.subject.trim())),
   );
   const key =
     messages.flatMap((entry) => (entry.messageId === null ? [] : [entry.messageId])).toSorted()[0] ?? messageId;

@@ -99,10 +99,18 @@ export function mapSongs(items: SourceSong[]) {
   return { songs, dropped };
 }
 
-export function createYouTube() {
+export function createYouTube(fetcher: typeof fetch = fetch) {
   let session: Promise<Innertube> | undefined;
   async function client() {
-    session ??= Innertube.create({ generate_session_locally: true, retrieve_player: false });
+    session ??= Innertube.create({
+      generate_session_locally: true,
+      retrieve_player: false,
+      fetch: (input, init) => {
+        const original = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+        const timeout = AbortSignal.timeout(10_000);
+        return fetcher(input, { ...init, signal: original ? AbortSignal.any([original, timeout]) : timeout });
+      },
+    });
     return session.catch((error: unknown) => {
       session = undefined;
       throw error;

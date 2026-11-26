@@ -182,7 +182,10 @@ export function LocalPlaylist({
       {list.data && songs.length === 0 && <EmptyState scene="music" title={m.music_playlist_no_songs()} />}
       <ol className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {songs.map((song, index) => (
-          <li key={index} className="relative flex items-center gap-md border-t border-dashed border-border py-xs">
+          <li
+            key={song.itemId}
+            className="relative flex items-center gap-md border-t border-dashed border-border py-xs"
+          >
             <span className="w-md text-label text-muted-foreground tabular-nums">{index + 1}</span>
             <CoverTile src={song.cover} />
             <div className="min-w-0 flex-1">
@@ -202,7 +205,10 @@ export function LocalPlaylist({
                 className={iconButton}
                 aria-label={m.music_playlist_move_up({ title: song.title })}
                 disabled={index === 0 || move.isPending}
-                onClick={() => move.mutate({ playlistId: id, from: index, to: index - 1 })}
+                onClick={() => {
+                  const target = songs[index - 1];
+                  if (target) move.mutate({ playlistId: id, itemId: song.itemId, toItemId: target.itemId });
+                }}
               >
                 <ArrowUpIcon aria-hidden="true" />
               </button>
@@ -211,7 +217,10 @@ export function LocalPlaylist({
                 className={iconButton}
                 aria-label={m.music_playlist_move_down({ title: song.title })}
                 disabled={index === songs.length - 1 || move.isPending}
-                onClick={() => move.mutate({ playlistId: id, from: index, to: index + 1 })}
+                onClick={() => {
+                  const target = songs[index + 1];
+                  if (target) move.mutate({ playlistId: id, itemId: song.itemId, toItemId: target.itemId });
+                }}
               >
                 <ArrowDownIcon aria-hidden="true" />
               </button>
@@ -220,7 +229,7 @@ export function LocalPlaylist({
                 className={iconButton}
                 aria-label={m.music_playlist_remove({ title: song.title })}
                 disabled={remove.isPending}
-                onClick={() => remove.mutate({ playlistId: id, position: index })}
+                onClick={() => remove.mutate({ playlistId: id, itemId: song.itemId })}
               >
                 <XIcon aria-hidden="true" />
               </button>

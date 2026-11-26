@@ -409,6 +409,26 @@ void test('library confines PDF reads to configured material folders', async (t)
   assert.equal(opened.statusCode, 200);
   const fileId = opened.json().result.data.fileId;
   assert.equal((await app.inject(`/files/${fileId}?inline=1`)).body, 'PDF');
+  const repeated = await Promise.all(
+    Array.from({ length: 3 }, () =>
+      app.inject({
+        method: 'POST',
+        url: '/trpc/study.openMaterial',
+        payload: { path: 'nested/lesson.pdf' },
+      }),
+    ),
+  );
+  assert.deepEqual(
+    repeated.map((response) => response.json().result.data.fileId),
+    [fileId, fileId, fileId],
+  );
+  await writeFile(join(materials, 'nested', 'lesson.pdf'), 'UPDATED PDF');
+  const changed = await app.inject({
+    method: 'POST',
+    url: '/trpc/study.openMaterial',
+    payload: { path: 'nested/lesson.pdf' },
+  });
+  assert.notEqual(changed.json().result.data.fileId, fileId);
 });
 
 void test('tagged focus minutes reach Study and survive restart in the state file', async (t) => {
