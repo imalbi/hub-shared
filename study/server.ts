@@ -15,6 +15,16 @@ import { activeHeaders, GLOBAL, readDays, readDaysById, readIndex, searchDays, s
 import { plans, preferences, progress } from './schema.ts';
 import { savePlan } from './store.ts';
 import { createStateWriter } from './state.ts';
+import {
+  resourceInput,
+  resourceScope,
+  resourceRevision,
+  resourceSubjects,
+  readResources,
+  saveResource,
+  setResourcePinned,
+  deleteResource,
+} from './resources.ts';
 import { backlogInput, backlogStatus, deleteBacklog, readBacklog, saveBacklog, setBacklogStatus } from './backlog.ts';
 
 export const studyModule = defineModule({
@@ -88,6 +98,30 @@ export const studyModule = defineModule({
     return {
       router: router({
         focusMinutes: protectedProcedure.query(() => focusHistory.minutesByTag('study/')),
+        resourceSubjects: protectedProcedure.query(() => resourceSubjects(db)),
+        resources: protectedProcedure.input(resourceScope).query(({ input }) => readResources(db, input)),
+        saveResource: protectedProcedure
+          .meta({
+            label: 'Salva materiale',
+            description: 'Create or update a subject reference using its observed revision',
+          })
+          .input(resourceInput)
+          .mutation(({ input }) => saveResource(db, config.materialDirs, input)),
+        setResourcePinned: protectedProcedure
+          .meta({
+            label: 'Fissa materiale',
+            description: 'Pin or unpin a subject reference using its observed revision',
+          })
+          .input(resourceRevision.extend({ pinned: z.boolean() }))
+          .mutation(({ input }) => setResourcePinned(db, input)),
+        deleteResource: protectedProcedure
+          .meta({
+            label: 'Elimina materiale',
+            description: 'Delete only the reference record after confirmation',
+            danger: true,
+          })
+          .input(resourceRevision.extend({ confirmed: z.literal(true) }))
+          .mutation(({ input }) => deleteResource(db, input)),
         library: protectedProcedure.query(() => listMaterials(config.materialDirs)),
         openMaterial: protectedProcedure
           .meta({ label: 'Apri materiale', description: 'Open a PDF from the configured study material folders' })

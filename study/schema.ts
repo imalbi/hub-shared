@@ -1,5 +1,21 @@
 import { integer, primaryKey, sqliteTable, text } from '../../apps/server/src/core/module-db.ts';
 
+export const resources = sqliteTable('resources', {
+  position: integer('position').primaryKey({ autoIncrement: true }),
+  id: text('id').notNull().unique(),
+  planId: text('plan_id').notNull(),
+  subjectId: text('subject_id').notNull(),
+  title: text('title').notNull(),
+  kind: text('kind', { enum: ['note', 'pdf', 'link'] }).notNull(),
+  body: text('body').notNull().default(''),
+  url: text('url').notNull().default(''),
+  path: text('path').notNull().default(''),
+  folder: integer('folder'),
+  page: integer('page'),
+  pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false),
+  revision: integer('revision').notNull().default(1),
+});
+
 export const learningBacklog = sqliteTable('learning_backlog', {
   position: integer('position').primaryKey({ autoIncrement: true }),
   id: text('id').notNull().unique(),

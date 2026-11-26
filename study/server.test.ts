@@ -724,9 +724,11 @@ void test('catalog actions retain their registry metadata and input schemas', as
   assert.deepEqual(own.map((action) => action.path).toSorted(), [
     'study.activate',
     'study.deleteBacklog',
+    'study.deleteResource',
     'study.openMaterial',
     'study.openToday',
     'study.saveBacklog',
+    'study.saveResource',
     'study.setAutonomy',
     'study.setBacklogStatus',
     'study.setCurrent',
@@ -734,6 +736,7 @@ void test('catalog actions retain their registry metadata and input schemas', as
     'study.setMix',
     'study.setNote',
     'study.setPlan',
+    'study.setResourcePinned',
     'study.setStep',
     'study.setSubject',
   ]);

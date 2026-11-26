@@ -15,3 +15,40 @@
 .study-error:focus-visible {
   opacity: 1;
 }
+
+.study-markdown > * + * {
+  margin-top: 1rem;
+}
+.study-markdown :is(h1, h2, h3, h4) {
+  font-size: var(--text-title);
+  line-height: var(--text-title--line-height);
+  font-weight: var(--text-title--font-weight);
+}
+.study-markdown :is(ul, ol) {
+  padding-inline-start: 1.5rem;
+}
+.study-markdown ul {
+  list-style: disc;
+}
+.study-markdown ol {
+  list-style: decimal;
+}
+.study-markdown a {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.study-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+.study-markdown :is(th, td) {
+  border: 1px solid var(--border);
+  padding: 0.5rem;
+  text-align: start;
+}
+.study-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+}

@@ -15,7 +15,9 @@ test('library keeps its heading, filters and first row in place while the skelet
     await route.continue();
   });
   await page.goto('/desk/studio?tab=libreria');
-  const skeleton = page.getByRole('status', { name: 'Caricamento' });
+  const skeleton = page
+    .getByRole('region', { name: 'Libreria', exact: true })
+    .getByRole('status', { name: 'Caricamento' });
   await expect(skeleton).toBeVisible();
   const heading = page.getByRole('heading', { name: 'Libreria' });
   const panel = page.locator('section').filter({ has: heading });

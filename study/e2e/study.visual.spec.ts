@@ -108,10 +108,65 @@ function seedLong() {
   };
 }
 
+function seedResources() {
+  const db = new DatabaseSync(join(RUN_TMP, 'modules', 'study.db'));
+  db.prepare("DELETE FROM resources WHERE id IN ('visual-note', 'visual-pdf', 'visual-link')").run();
+  const insert = db.prepare(
+    "INSERT INTO resources (id, plan_id, subject_id, title, kind, body, url, path, folder, page, pinned) VALUES (?, 'example', 'a', ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  insert.run(
+    'visual-note',
+    'Scheda foglia',
+    'note',
+    '# La foglia\n\n- Lembo: raccoglie la luce.\n- Picciolo: collega la foglia al ramo.\n\n| Parte | Funzione |\n| --- | --- |\n| Lembo | Luce |\n\n[Riferimento](https://example.com/plants)',
+    '',
+    '',
+    null,
+    null,
+    1,
+  );
+  insert.run('visual-pdf', 'Dispensa di botanica', 'pdf', '', '', 'dispensa.pdf', 0, 2, 1);
+  insert.run('visual-link', 'Atlante botanico', 'link', '', 'https://example.com/plants', '', null, null, 0);
+  return () => {
+    db.prepare("DELETE FROM resources WHERE id IN ('visual-note', 'visual-pdf', 'visual-link')").run();
+    db.close();
+  };
+}
+
 for (const theme of [
   { name: 'Scuro', id: 'ink' },
   { name: 'Chiaro', id: 'paper' },
 ]) {
+  for (const width of [3840, 375]) {
+    test(`Appunto ${width} ${theme.id}`, async ({ page }) => {
+      const restore = seedResources();
+      try {
+        await page.setViewportSize({ width: 3840, height: 2160 });
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await page.goto('/desk/settings/appearance');
+        await chooseTheme(page, theme.name);
+        await page.setViewportSize({ width, height: width === 375 ? 812 : 2160 });
+        await page.goto('/desk/studio?tab=libreria&subject=example:a');
+        await page
+          .getByRole('listitem', { name: 'Scheda foglia', exact: true })
+          .getByRole('button', { name: 'Apri, Scheda foglia', exact: true })
+          .click();
+        const dialog = page.getByRole('dialog', { name: 'Scheda foglia', exact: true });
+        await expect(dialog.getByRole('table')).toBeVisible();
+        await page.evaluate(async () => {
+          await document.fonts.ready;
+        });
+        await page.mouse.move(0, 0);
+        await expect(page).toHaveScreenshot(`study-resource-note-${width}-${theme.id}.png`, { animations: 'disabled' });
+        await page.keyboard.press('Escape');
+        await page.setViewportSize({ width: 3840, height: 2160 });
+        await page.goto('/desk/settings/appearance');
+        await chooseTheme(page, 'Scuro');
+      } finally {
+        restore();
+      }
+    });
+  }
   for (const size of [
     { width: 1920, height: 1080 },
     { width: 3840, height: 2160 },
@@ -126,6 +181,7 @@ for (const theme of [
       { name: 'Oggi lungo', id: 'studio', long: true },
     ]) {
       test(`${tab.name} ${size.width} ${theme.id}`, async ({ page }) => {
+        const restoreResources = tab.id === 'studio' || tab.id === 'libreria' ? seedResources() : undefined;
         const restore = tab.id === 'ripasso' ? seedReview() : tab.long ? seedLong() : undefined;
         try {
           await page.setViewportSize(size);
@@ -161,11 +217,14 @@ for (const theme of [
           if (tab.id === 'studio') {
             await expect(page.getByRole('heading', { name: 'La foglia' })).toBeVisible();
             await expect(page.getByText('Sessioni completate oggi: 0')).toBeVisible();
+            await expect(page.getByRole('listitem', { name: 'Scheda foglia', exact: true })).toBeVisible();
           } else if (tab.id === 'ripasso') await expect(page.getByText('Foglio 1, es. 3')).toBeVisible();
           else if (tab.id === 'backlog')
             await expect(page.getByRole('heading', { name: 'Corso di esempio' })).toBeVisible();
-          else if (tab.id === 'libreria') await expect(page.getByText('dispensa.pdf', { exact: false })).toBeVisible();
-          else await expect(page.getByText('Piano di esempio').first()).toBeVisible();
+          else if (tab.id === 'libreria') {
+            await expect(page.getByText('dispensa.pdf', { exact: false })).toBeVisible();
+            await expect(page.getByRole('listitem', { name: 'Scheda foglia', exact: true })).toBeVisible();
+          } else await expect(page.getByText('Piano di esempio').first()).toBeVisible();
           await page.evaluate(async () => {
             await document.fonts.ready;
           });
@@ -180,6 +239,7 @@ for (const theme of [
           await chooseTheme(page, 'Scuro');
         } finally {
           restore?.();
+          restoreResources?.();
         }
       });
     }

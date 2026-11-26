@@ -1,3 +1,4 @@
+import { PinnedResources } from './resources.tsx';
 import { EmptyState } from '../../apps/web/src/components/ui/empty-state.tsx';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -222,12 +223,13 @@ function TodayDay({
         />
         {day.done && <RegistryButton label={m.study_next()} action={() => open.mutateAsync()} />}
       </section>
-      <section data-study-dial className="col-span-3 min-w-0 border-l border-border px-lg">
+      <section data-study-dial className="col-span-3 flex min-w-0 flex-col gap-xl border-l border-border px-lg">
         <PomodoroPanel
           instrument
           tag={`study/${day.key}`}
           footer={m.study_focus_minutes({ minutes: (minutes.data?.[`study/${day.key}`] ?? 0).toLocaleString('it') })}
         />
+        <PinnedResources scope={{ planId: day.planId, subjectId: day.subject }} />
       </section>
       <section data-study-next className="col-span-3 flex min-w-0 flex-col gap-lg border-l border-border pl-lg">
         <h3 className="text-caps text-muted-foreground">{m.study_next_days()}</h3>

@@ -29,7 +29,7 @@ export async function listMaterials(dirs: string[]) {
   return results.toSorted((a, b) => a.folder - b.folder || a.path.localeCompare(b.path));
 }
 
-async function resolveMaterial(dirs: string[], path: string, folder?: number) {
+export async function resolveMaterial(dirs: string[], path: string, folder?: number) {
   if (isAbsolute(path) || path.split(/[\\/]/).some((part) => part === '..') || !path.toLowerCase().endsWith('.pdf'))
     throw new TRPCError({ code: 'BAD_REQUEST' });
   for (const [index, dir] of dirs.entries()) {
