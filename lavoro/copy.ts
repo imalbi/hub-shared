@@ -300,8 +300,13 @@ export const copy = {
     },
   },
 
-  // The hold-to-confirm controls of the actions the server marks `danger` (accessible name, idle and done labels).
+  // Accessible names and state labels for hold-to-confirm controls.
   hold: {
+    archiveGroup: {
+      label: 'Tieni premuto per archiviare tutti gli annunci fuori dai vincoli',
+      idle: 'Archivia tutti',
+      done: 'Archiviati',
+    },
     rule: { label: 'Tieni premuto per eliminare la regola', idle: 'Elimina', done: 'Eliminata' },
     interview: (label: string) => ({
       label: `Tieni premuto per eliminare il colloquio: ${label}`,

@@ -34,7 +34,7 @@ void test('L1 every status is reachable through the filter, the 21-day rule incl
   const found = Object.fromEntries(all.map((status) => [status, keys('all', status)]));
   assert.deepEqual(found, {
     pending: ['pending', 'pending-interview'],
-    interviewing: ['interview'],
+    interviewing: ['pending-interview', 'interview', 'offer'],
     offer: ['offer'],
     expired: ['stale', 'expired'],
     rejected: ['rejected'],
@@ -50,11 +50,23 @@ void test('L1 segments split by effective status and a posting without an applic
   assert.deepEqual(keys('pending', 'rejected'), []);
 });
 
-void test('L1 every segment count equals the length of the list it opens, with and without a status', () => {
-  const segments: CandidatureSegment[] = ['pending', 'interview', 'closed', 'all'];
-  for (const status of [undefined, 'pending', 'interviewing', 'expired', 'rejected'] as const) {
-    const counts = segmentCounts(rows, { status, now });
-    for (const segment of segments)
-      assert.equal(counts[segment], keys(segment, status).length, `${segment} ${status ?? 'any'}`);
+void test('segment counts remain unfiltered for every status', () => {
+  for (const status of [undefined, 'pending', 'interviewing', 'offer', 'expired', 'rejected', 'withdrawn'] as const) {
+    assert.deepEqual(segmentCounts(rows, { status, now }), { pending: 1, interview: 3, closed: 4, all: 8 });
   }
+});
+
+void test('Colloqui includes closed applications with interviews and excludes closed applications without them', () => {
+  const closed = ['rejected', 'expired', 'withdrawn'] as const;
+  const fixtures = closed.flatMap((status) => [
+    row(`${status}-without`, status, 30),
+    {
+      ...row(`${status}-with`, status, 30),
+      application: { status, appliedAt: now - 30 * day, interviews: [{ scheduledAt: now - day }] },
+    },
+  ]);
+  assert.deepEqual(
+    selectApplications(fixtures, { segment: 'closed', status: 'interviewing', now }).map((entry) => entry.key),
+    closed.map((status) => `${status}-with`),
+  );
 });

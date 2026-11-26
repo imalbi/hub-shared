@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { texProblems } from './tex-check.ts';
 
@@ -12,11 +11,6 @@ Hello world, 50\% growth.
 
 void test('clean document with template preamble passes', () => {
   assert.deepEqual(texProblems(cleanDoc, cleanDoc), []);
-});
-
-void test('lettera.tex template passes', async () => {
-  const template = await readFile(new URL('../candidatura/lettera.tex', import.meta.url), 'utf8');
-  assert.deepEqual(texProblems(template, template), []);
 });
 
 void test('rejects dangerous TeX primitives in body', () => {

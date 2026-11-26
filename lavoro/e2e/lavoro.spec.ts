@@ -1258,7 +1258,7 @@ test.describe('Ricerca lavoro zone (read-only)', () => {
     await expect(page.locator('dialog[open]')).toHaveCount(0);
   });
 
-  test('status filter reaches every status and the segment counts follow it', async ({ page }) => {
+  test('status filter narrows the list while segment counts remain totals', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await page.goto('/desk/ricerca?tab=candidature&candidature=all');
     await expect(page.getByRole('button', { name: 'Tutte 3' })).toBeVisible({ timeout: 10000 });
@@ -1268,24 +1268,55 @@ test.describe('Ricerca lavoro zone (read-only)', () => {
       await page.getByRole('button', { name: /^Stato:/ }).click();
       await page.getByRole('option', { name: label, exact: true }).click();
     };
-    // The 21-day rule counts as Scaduta, and a segment that cannot hold the status shows 0, not the old count.
+    // The 21-day rule still applies; badges stay at their unfiltered totals.
     await pick('Scaduta');
     await expect(page).toHaveURL(/status=expired/);
-    await expect(page.getByRole('button', { name: 'Tutte 1' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Tutte 3' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'In attesa 0' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Chiuse 1' })).toBeVisible();
-    await page.getByRole('button', { name: 'Tutte 1' }).click();
+    await expect(page.getByRole('button', { name: 'Chiuse 2' })).toBeVisible();
+    await page.getByRole('button', { name: 'Tutte 3' }).click();
     await expect(page.getByText('Lead Architect')).toBeVisible();
     await expect(page.getByText('Staff Developer')).toHaveCount(0);
     await expect(page.getByRole('status', { name: '1 candidature' })).toBeVisible();
 
     await pick('Colloqui');
+    await expect(page.getByRole('button', { name: 'In colloquio 1' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Chiuse 2' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Tutte 3' })).toBeVisible();
     await expect(page.getByText('Principal Engineer')).toBeVisible();
     await expect(page.getByText('Lead Architect')).toHaveCount(0);
     await pick('Rifiutata');
     await expect(page.getByText('Staff Developer')).toBeVisible();
     await pick('Tutti gli stati');
     await expect(page.getByRole('button', { name: 'Tutte 3' })).toBeVisible();
+  });
+
+  test('Chiuse with Colloqui includes prior interviews and excludes applications without interviews', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 3840, height: 2160 });
+    await page.route('**/trpc/*lavoro.list*', async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      for (const reply of Array.isArray(body) ? body : [body]) {
+        const jobs = reply.result?.data?.jobs;
+        if (!Array.isArray(jobs)) continue;
+        for (const job of jobs) {
+          if (job.key === 'fake-rejected-key')
+            job.application.interviews = [
+              { id: 900, label: 'Colloquio precedente', scheduledAt: Date.now() - 86400000 },
+            ];
+        }
+      }
+      await route.fulfill({ response, json: body });
+    });
+    await page.goto('/desk/ricerca?tab=candidature&candidature=closed&status=interviewing');
+    await expect(page.getByText('Staff Developer')).toBeVisible();
+    await expect(page.getByText('Lead Architect')).toHaveCount(0);
+    await expect(page.getByText('Principal Engineer')).toHaveCount(0);
+    await expect(page.getByRole('status', { name: '1 candidature' })).toBeVisible();
+    for (const name of ['In attesa 0', 'In colloquio 1', 'Chiuse 2', 'Tutte 3'])
+      await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
   });
 
   test('Statistiche lists the Possibilità rows, an old stored verdict counted through the mapping', async ({
@@ -2507,6 +2538,100 @@ test.describe('Annunci grouped by Possibilità', () => {
     { title: 'Gruppo Fuori uno', company: 'Iota Srl', total: 28, possibility: 'fuori' },
     { title: 'Gruppo Gia candidato', company: 'Theta Srl', total: 25, possibility: 'fuori', applied: true },
   ];
+
+  test('bulk archive requires a hold and archives only the collapsed fuori group', async ({ page, pc }) => {
+    await page.setViewportSize({ width: 3840, height: 2160 });
+    const schema = z.object({
+      result: z.object({
+        data: z.object({
+          jobs: z.array(
+            z.object({
+              key: z.string(),
+              archivedAt: z.number().nullable(),
+              deletedAt: z.number().nullable(),
+              application: z.unknown().nullable(),
+            }),
+          ),
+        }),
+      }),
+    });
+    const readJobs = async () => schema.parse(await (await pc.get('/trpc/lavoro.list')).json()).result.data.jobs;
+    const keys: string[] = [];
+    for (let index = 0; index < 5; index++) {
+      const response = await pc.post('/trpc/lavoro.importSave', {
+        data: {
+          job: {
+            title: `Archiviazione gruppo ${index}`,
+            company: 'Fixture Srl',
+            url: `https://example.com/bulk-archive-${index}`,
+          },
+        },
+      });
+      expect(response.ok()).toBe(true);
+      const result = z
+        .object({ result: z.object({ data: z.object({ key: z.string() }) }) })
+        .parse(await response.json());
+      keys.push(result.result.data.key);
+    }
+    const outsideKeys = keys.slice(0, 2);
+    const possibilities = ['fuori', 'fuori', 'alta', 'media', 'bassa'];
+    await page.route('**/trpc/*lavoro.list*', async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      for (const reply of Array.isArray(body) ? body : [body]) {
+        const jobs = reply.result?.data?.jobs;
+        if (!Array.isArray(jobs)) continue;
+        reply.result.data.jobs = jobs
+          .filter((job) => keys.includes(job.key))
+          .map((job) => ({
+            ...job,
+            opinion: {
+              verdict: possibilities[keys.indexOf(job.key)],
+              possibility: possibilities[keys.indexOf(job.key)],
+              codes: [],
+              unverified: [],
+              outdated: false,
+            },
+          }));
+      }
+      await route.fulfill({ response, json: body });
+    });
+    try {
+      await page.goto('/desk/ricerca');
+      const group = page.getByRole('region', { name: 'Fuori dai vincoli 2' });
+      await expect(group.getByRole('button', { name: 'Mostra' })).toBeVisible();
+      await expect(group.locator('[data-posting-key]')).toHaveCount(0);
+      const archive = group.getByRole('button', {
+        name: 'Tieni premuto per archiviare tutti gli annunci fuori dai vincoli',
+      });
+      let requests = 0;
+      page.on('request', (request) => {
+        if (request.url().includes('lavoro.setFlag')) requests++;
+      });
+      await archive.click();
+      expect(requests).toBe(0);
+      await expect(group.getByRole('heading', { name: 'Fuori dai vincoli 2' })).toBeVisible();
+      expect((await readJobs()).filter((job) => keys.includes(job.key) && job.archivedAt !== null)).toHaveLength(0);
+      await expect(group).toHaveScreenshot('lavoro-fuori-bulk-archive.png');
+      await holdButton(page, archive);
+      await expect(group).toHaveCount(0);
+      await expect
+        .poll(async () =>
+          (await readJobs())
+            .filter((job) => keys.includes(job.key) && job.archivedAt !== null)
+            .map((job) => job.key)
+            .toSorted(),
+        )
+        .toEqual(outsideKeys.toSorted());
+      for (const name of ['Possibilità alta 1', 'Possibilità media 1', 'Possibilità bassa 1']) {
+        const otherGroup = page.getByRole('region', { name, exact: true });
+        await expect(otherGroup.getByRole('heading', { name, exact: true })).toBeVisible();
+        await expect(otherGroup.getByRole('button', { name: /Tieni premuto per archiviare tutti/ })).toHaveCount(0);
+      }
+    } finally {
+      await pc.post('/trpc/lavoro.setFlag', { data: { keys, flag: 'deleted', value: true } });
+    }
+  });
 
   test('groups with their counts, the sort switch, closed groups and navigation order', async ({ page }) => {
     await page.setViewportSize({ width: 3840, height: 2160 });

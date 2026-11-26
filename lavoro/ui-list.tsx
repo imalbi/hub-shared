@@ -1,3 +1,4 @@
+import { HoldButton } from '../../apps/web/src/components/hold-button.tsx';
 import { LoadingSkeleton } from '../../apps/web/src/components/ui/loading-skeleton.tsx';
 import { NumberRoll } from '../../apps/web/src/components/ui/number-roll.tsx';
 import { AnimatedItem, AnimatedRows } from '../../apps/web/src/components/animated-list.tsx';
@@ -251,7 +252,21 @@ export function PostingsList({
       ) : groups ? (
         <div className="flex flex-col gap-lg">
           {groups.map((group) => (
-            <GroupSection key={group.id} group={group} open={openGroups.has(group.id)} onToggle={onToggleGroup}>
+            <GroupSection
+              key={group.id}
+              group={group}
+              open={openGroups.has(group.id)}
+              onToggle={onToggleGroup}
+              onArchive={() =>
+                onSetFlag(
+                  group.jobs.map((job) => job.key),
+                  'archived',
+                  true,
+                  copy.actions.toast_archived(group.jobs.length),
+                  copy.actions.toast_restored(group.jobs.length),
+                )
+              }
+            >
               {renderItems(group.jobs)}
             </GroupSection>
           ))}
@@ -282,11 +297,13 @@ function GroupSection({
   group,
   open,
   onToggle,
+  onArchive,
   children,
 }: {
   group: PostingGroup;
   open: boolean;
   onToggle: (id: PostingGroupId) => void;
+  onArchive: () => Promise<void>;
   children: React.ReactNode;
 }) {
   const headingId = React.useId();
@@ -315,6 +332,9 @@ function GroupSection({
             >
               {open ? copy.groups.hide : copy.groups.show}
             </button>
+          )}
+          {group.id === 'fuori' && group.jobs.length > 0 && (
+            <HoldButton {...copy.hold.archiveGroup} outline onConfirm={onArchive} />
           )}
         </div>
       </div>

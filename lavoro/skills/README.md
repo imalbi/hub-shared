@@ -11,7 +11,7 @@ Claude Code and Codex skills that work over Hub's MCP (`lavoro.posting`, `lavoro
 
 ## Skills
 
-- `candidatura`: tailored one-page CV (optional cover letter on request) for a posting (needs `pdflatex`, `pdfinfo`, `pdftotext`).
+- `candidatura`: tailored one-page CV for a posting (needs `pdflatex`, `pdfinfo`, `pdftotext`).
 - `colloquio`: interview preparation for an application (`colloquio-<date>.md` beside what was sent), then an offered mock interview.
 - `lacune`: skill gaps across the review and applied postings (`lacune-<date>.md`, at most 40 postings).
 

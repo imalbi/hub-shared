@@ -40,10 +40,9 @@ export function expectationFromTex(tex: string): AtsExpectation {
   return { email, phone: shown('tel'), headings };
 }
 
-async function main(file: string | undefined, texFile: string | undefined, letter: boolean) {
-  if (!file || !texFile) throw new Error('usage: node ats-text.ts <file.pdf> <cv-source.tex> [--no-headings]');
+async function main(file: string | undefined, texFile: string | undefined) {
+  if (!file || !texFile) throw new Error('usage: node ats-text.ts <file.pdf> <cv-source.tex>');
   const expected = expectationFromTex(await readFile(texFile, 'utf8'));
-  if (letter) expected.headings = [];
   const { stdout } = await run('pdftotext', [file, '-']);
   const problems = atsProblems(stdout, expected);
   process.stdout.write(problems.length ? problems.map((p) => `FAIL ${p}\n`).join('') : 'OK ats\n');
@@ -51,7 +50,7 @@ async function main(file: string | undefined, texFile: string | undefined, lette
 }
 
 if (import.meta.main)
-  main(process.argv[2], process.argv[3], process.argv.includes('--no-headings')).catch((error: unknown) => {
+  main(process.argv[2], process.argv[3]).catch((error: unknown) => {
     process.stderr.write(`ERROR ${error instanceof Error ? error.message : 'failed'}\n`);
     process.exitCode = 2;
   });
