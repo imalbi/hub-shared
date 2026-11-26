@@ -4,16 +4,16 @@ import { DatabaseSync } from 'node:sqlite';
 import type { APIRequestContext, Locator, Page } from '../../../apps/e2e/tests/fixtures.ts';
 import { expect, test } from '../../../apps/e2e/tests/fixtures.ts';
 import { RUN_TMP } from '../../../apps/e2e/tests/hosts.ts';
-import { legiblePlan } from './study-fixtures.ts';
+import { legibleDay, legiblePlan, separatorDay } from './study-fixtures.ts';
 
-async function openToday(page: Page, pc: APIRequestContext) {
+async function openToday(page: Page, pc: APIRequestContext, day: typeof legibleDay | typeof separatorDay = legibleDay) {
   const db = new DatabaseSync(join(RUN_TMP, 'modules', 'study.db'));
   db.prepare("DELETE FROM progress WHERE plan_id IN ('example', '*')").run();
   db.prepare("DELETE FROM preferences WHERE plan_id = '*'").run();
   db.close();
   const inbox = join(RUN_TMP, 'study', 'in-arrivo');
   await mkdir(inbox, { recursive: true });
-  await writeFile(join(inbox, 'legible.json'), JSON.stringify(await legiblePlan()));
+  await writeFile(join(inbox, 'legible.json'), JSON.stringify(await legiblePlan(day)));
   expect((await pc.post('/trpc/study.activate', { data: { name: 'legible.json' } })).ok()).toBe(true);
   await page.goto('/desk/studio');
   await expect(page.getByRole('heading', { name: 'La foglia', level: 2 })).toBeVisible();
@@ -246,3 +246,54 @@ test('Studio scrolls only as far as its content: the timer digits do not stretch
     await pc.post('/trpc/pomodoro.stop', { data: {} });
   }
 });
+
+for (const tab of ['studio', 'piano']) {
+  test(`${tab} keeps only dashed block boundaries with short and multiline steps`, async ({ page, pc }) => {
+    await page.setViewportSize({ width: 3840, height: 2160 });
+    await openToday(page, pc, separatorDay);
+    await page.getByRole('checkbox', { name: legibleDay.blocks[0].steps[0].text }).check();
+    if (tab === 'piano') {
+      await page.getByRole('tab', { name: 'Piano', exact: true }).click();
+      const day = page.getByRole('button', { name: 'G1 · La foglia', exact: true });
+      if ((await day.getAttribute('aria-expanded')) !== 'true') await day.click();
+    } else {
+      await expect(page.locator('li[data-current]')).toContainText('Rileggi gli esempi come riscontro.');
+      const error = page.getByRole('button', { name: 'Registra un errore su: Rileggi gli esempi come riscontro.' });
+      await error.focus();
+      await expect(error).toBeFocused();
+      await expect(error).toHaveCSS('opacity', '1');
+    }
+    const body =
+      tab === 'piano'
+        ? page.getByRole('region', { name: 'Giorni del piano', exact: true })
+        : page.locator('[data-study-day]');
+    for (const [index, block] of separatorDay.blocks.entries()) {
+      const section = body.getByRole('heading', { name: block.title, level: 4 }).locator('..');
+      await expect(section).toHaveCSS('border-top-width', index === 0 ? '0px' : '1px');
+      if (index > 0) await expect(section).toHaveCSS('border-top-style', 'dashed');
+      const rows = section.locator('li');
+      await expect(rows).toHaveCount(block.steps.length);
+      await expect(rows.last()).toHaveCSS('border-bottom-width', '0px');
+      for (let step = 0; step < block.steps.length - 1; step++) {
+        await expect(rows.nth(step)).toHaveCSS('border-bottom-width', tab === 'studio' ? '1px' : '0px');
+        if (tab === 'studio') await expect(rows.nth(step)).toHaveCSS('border-bottom-style', 'solid');
+      }
+      for (const row of await rows.all()) {
+        const text = row.locator('span.flex-1');
+        const textBox = await box(text);
+        const rowBox = await box(row);
+        expect(textBox.y).toBeGreaterThanOrEqual(rowBox.y);
+        expect(textBox.y + textBox.height).toBeLessThanOrEqual(rowBox.y + rowBox.height + 1);
+        expect(await text.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true);
+        for (const action of await row.getByRole('button').all()) {
+          const actionBox = await box(action);
+          expect(intersects(actionBox, textBox)).toBe(false);
+          expect(actionBox.x + actionBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
+        }
+      }
+    }
+    const short = await box(body.getByText('Scrivi tre righe di sintesi.', { exact: true }));
+    const multiline = body.getByText(separatorDay.blocks[1].steps[0].text, { exact: true });
+    expect((await box(multiline)).height).toBeGreaterThan(short.height * 2);
+  });
+}

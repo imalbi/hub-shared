@@ -2,6 +2,9 @@
   border-bottom: 1px solid var(--border);
   padding: 0.75rem 0;
 }
+.study-step:last-child {
+  border-bottom: 0;
+}
 .study-step[data-current] {
   background: var(--muted);
   border-radius: var(--radius-sm);

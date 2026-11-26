@@ -8,6 +8,8 @@
 
 # Study (web)
 
+- `style.css` removes the bottom border from each block’s last `.study-step`: solid dividers belong between Oggi steps, while `day-body.tsx` owns the single dashed boundary between blocks in both Oggi and Piano. Keep row heights content-driven.
+
 - Learning backlog (`backlog.ts`, `backlog.tsx`) lives in `learning_backlog`, independently of plans, progress/state exports and scheduling. Preserve creation order within open/completed groups. `deleteBacklog` uses core danger confirmation (`confirmed: true`), so agents cannot bypass the UI confirmation.
 
 - Studio owns the `studio` zone and adds its sections through `ui.tsx`; `use-study.ts` uses the shared module WebSocket and scoped TanStack options. Piano loads day bodies only for open groups. Piano and Piani follow the Studio mockup (plan 40): day rows and week groups are disclosure buttons with `aria-expanded` (not `<details>`), subject shades come from `subjectShade` in `use-study.ts` (foreground opacities, never `surface-raised`, which is dark in paper). The Hairline `ButtonGroup` drew no selected fill in a small filter row (the active label went dark on dark), so filters are plain pressed-state pills in a `fieldset`. With several active plans (decision 15) `studySubjects` labels each subject by its plan (`<plan>:<subject>` keys), Piano groups by week instead of phase and opens the first group when the current day is filtered out. Tailwind `max-w-md` resolves to this project’s 1rem spacing token, so use named width tokens such as `max-w-dialog-md` for forms.

@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { expect, test } from '../../../apps/e2e/tests/fixtures.ts';
 import { PC_URL, RUN_TMP } from '../../../apps/e2e/tests/hosts.ts';
 import { freezePomodoro } from '../../../apps/e2e/tests/pomodoro-visual.ts';
-import { legibleDay } from './study-fixtures.ts';
+import { legibleDay, separatorDay } from './study-fixtures.ts';
 import { chooseTheme } from '../../../apps/e2e/tests/themes.ts';
 
 test.beforeAll(async ({ request }) => {
@@ -92,7 +92,7 @@ function seedReview() {
 }
 
 /** Oggi with the shape of a real plan (no phases, long nested paths, day materials): undone by the returned function. */
-function seedLong() {
+function seedLong(day: typeof legibleDay | typeof separatorDay = legibleDay) {
   const db = new DatabaseSync(join(RUN_TMP, 'modules', 'study.db'));
   const dayRow = db.prepare("SELECT data FROM days WHERE plan_id = 'example' AND id = 'A01'").get();
   const planRow = db.prepare("SELECT header FROM plans WHERE id = 'example'").get();
@@ -100,7 +100,7 @@ function seedLong() {
     throw new Error('The example plan is not active');
   const header = JSON.parse(planRow.header);
   db.prepare("UPDATE plans SET header = ? WHERE id = 'example'").run(JSON.stringify({ ...header, phases: [] }));
-  db.prepare("UPDATE days SET data = ? WHERE plan_id = 'example' AND id = 'A01'").run(JSON.stringify(legibleDay));
+  db.prepare("UPDATE days SET data = ? WHERE plan_id = 'example' AND id = 'A01'").run(JSON.stringify(day));
   return () => {
     db.prepare("UPDATE plans SET header = ? WHERE id = 'example'").run(planRow.header);
     db.prepare("UPDATE days SET data = ? WHERE plan_id = 'example' AND id = 'A01'").run(dayRow.data);
@@ -179,10 +179,20 @@ for (const theme of [
       { name: 'Ripasso', id: 'ripasso' },
       { name: 'Backlog', id: 'backlog' },
       { name: 'Oggi lungo', id: 'studio', long: true },
+      { name: 'Oggi separatori', id: 'studio', separators: true },
+      { name: 'Piano separatori', id: 'piano', separators: true },
     ]) {
+      if (tab.separators && size.width !== 3840) continue;
       test(`${tab.name} ${size.width} ${theme.id}`, async ({ page }) => {
         const restoreResources = tab.id === 'studio' || tab.id === 'libreria' ? seedResources() : undefined;
-        const restore = tab.id === 'ripasso' ? seedReview() : tab.long ? seedLong() : undefined;
+        const restore =
+          tab.id === 'ripasso'
+            ? seedReview()
+            : tab.separators
+              ? seedLong(separatorDay)
+              : tab.long
+                ? seedLong()
+                : undefined;
         try {
           await page.setViewportSize(size);
           await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -230,7 +240,7 @@ for (const theme of [
           });
           await page.mouse.move(0, 0);
           await expect(page).toHaveScreenshot(
-            `study-${tab.long ? 'oggi-long' : tab.id}-${size.width}-${theme.id}.png`,
+            `study-${tab.separators ? `separators-${tab.id}` : tab.long ? 'oggi-long' : tab.id}-${size.width}-${theme.id}.png`,
             {
               animations: 'disabled',
             },

@@ -42,14 +42,31 @@ export const legibleDay = {
   check: 'Spiega a voce la struttura di una foglia senza appunti.',
 };
 
+/** Short, multiline and single-step blocks exercise both separator levels. */
+export const separatorDay = {
+  ...legibleDay,
+  blocks: legibleDay.blocks.map((block) => ({
+    ...block,
+    steps: block.steps.map((step) => ({
+      ...step,
+      text:
+        step.id === 'A01.p.1'
+          ? 'Osserva la struttura della foglia, confronta nervature e tessuti con il disegno e descrivi le differenze prima di controllare la soluzione. '
+              .repeat(6)
+              .trim()
+          : step.text,
+    })),
+  })),
+};
+
 /** The example plan with one subject, no phases and the day above as its first day. */
-export async function legiblePlan() {
+export async function legiblePlan(day: typeof legibleDay | typeof separatorDay = legibleDay) {
   const plan = JSON.parse(await readFile(new URL('../fixtures/example.json', import.meta.url), 'utf8'));
   plan.subjects = [plan.subjects[0]];
   plan.threads = [plan.threads[0]];
   plan.phases = [];
   plan.days = [
-    legibleDay,
+    day,
     ...plan.days.slice(1).map((day: object) => ({ ...day, subject: 'a', phase: undefined, threads: ['plants'] })),
   ];
   return plan;
