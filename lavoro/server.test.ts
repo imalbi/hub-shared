@@ -340,6 +340,13 @@ void test('a manual Parere waits for the automatic run instead of returning busy
   const result = await manual;
   assert.equal(result.statusCode, 200);
   assert.equal(result.json().result.data.verdict.verdict, 'alta');
+  await fake.drain();
+  const tracked = (await app.inject('/trpc/jobs.list')).json().result.data[0];
+  assert.equal(tracked.action, 'lavoro.pareri');
+  assert.equal(tracked.status, 'completed');
+  const input = encodeURIComponent(JSON.stringify({ jobId: tracked.id }));
+  const output = (await app.inject(`/trpc/jobs.output?input=${input}`)).json().result.data;
+  assert.ok(output.some((line: { message: string }) => /^Pareri completati: \d+$/u.test(line.message)));
 });
 
 void test('automatic Pareri stop at the reserve and leave a manual call available', async (t) => {
@@ -837,6 +844,61 @@ void test('changing the profile marks the saved opinion outdated and redo fetche
   assert.equal(redo.statusCode, 200);
   assert.equal(redo.json().result.data.outdated, false);
   assert.equal(calls, 2);
+});
+
+void test('paired devices only see aggregate Pareri progress and sanitized errors in Jobs', async (t) => {
+  const profile = { ...inventedProfile(), parere: { key: 'invented-key', profile: 'Private profile marker' } };
+  let calls = 0;
+  const serving = await serve(t, profile, {
+    sources: [createFakeSource({ catalog: () => [makeCard('indeed', 1), makeCard('indeed', 2)] })],
+    fetch: async () => {
+      if (++calls > 1) return new Response('Private provider response marker', { status: 500 });
+      return Response.json({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: JSON.stringify({
+                    verdict: 'alta',
+                    why: 'Private opinion marker',
+                    fit: [],
+                    contro: [],
+                    next: 'Leggi',
+                    unverified: [],
+                    codes: [],
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      });
+    },
+  });
+  const { app, post, fake } = serving;
+  const { phone, as } = await actors(t, serving);
+  await post('raccogli');
+  await fake.drain();
+  await post('pareriMancanti');
+  await fake.drain();
+  const listed = await as(phone, { url: '/trpc/jobs.list' });
+  assert.equal(listed.statusCode, 200);
+  const tracked = listed.json().result.data.find((job: { action: string }) => job.action === 'lavoro.pareri');
+  assert.equal(tracked.status, 'failed');
+  const output = await as(phone, { url: `/trpc/jobs.output${asInput({ jobId: tracked.id })}` });
+  assert.equal(output.statusCode, 200);
+  assert.deepEqual(
+    output.json().result.data.map((line: { message: string }) => line.message),
+    [
+      'Pareri avviati: 2 annunci',
+      'Pareri completati: 1',
+      '[parere] http 500',
+      'Pareri conclusi: 1 completati, 0 rimanenti',
+    ],
+  );
+  assert.equal((await as(phone, { url: '/trpc/lavoro.list' })).statusCode, 403);
+  assert.equal((await app.inject('/trpc/lavoro.list')).statusCode, 200);
 });
 
 void test('a paired device cannot read Parere or the profile in settings', async (t) => {
@@ -5279,4 +5341,80 @@ void test('manual LinkedIn retries serialize and retain the configured pause bet
   assert.equal(starts.length, 2);
   assert.ok(starts[1] - starts[0] >= profile.search.linkedin.minIntervalSeconds * 1000);
   assert.equal((await app.inject('/trpc/lavoro.list')).json().result.data.jobs.length, 1);
+});
+
+void test('tracked raccolta and prova expose progress and cancellation through core jobs', async (t) => {
+  for (const action of ['raccogli', 'prova'])
+    await t.test(action, async (t) => {
+      const source = createFakeSource({ delayMs: 100 });
+      const { app, post, fake, read } = await serve(t, testProfile(), { sources: [source] });
+      await post(action);
+      await settle();
+      const rows = (await app.inject('/trpc/jobs.list')).json().result.data;
+      const tracked = rows.find((row: { action: string }) => row.action === `lavoro.${action}`);
+      assert.ok(tracked);
+      assert.equal(tracked.status, 'running');
+      const input = encodeURIComponent(JSON.stringify({ jobId: tracked.id }));
+      const output = (await app.inject(`/trpc/jobs.output?input=${input}`)).json().result.data;
+      assert.ok(output.some((line: { message: string }) => line.message.includes('0/1')));
+      const cancelled = await app.inject({
+        method: 'POST',
+        url: '/trpc/jobs.cancel',
+        payload: { jobId: tracked.id, confirmed: true },
+      });
+      assert.equal(cancelled.statusCode, 200);
+      await settle();
+      assert.equal(source.record.active, 0);
+      assert.equal(fake.pending(), 0);
+      assert.equal((await read()).collection, null);
+      assert.equal((await app.inject('/trpc/jobs.list')).json().result.data[0].status, 'cancelled');
+      await post(action);
+      await fake.drain();
+      const finished = (await app.inject('/trpc/jobs.list')).json().result.data[0];
+      assert.equal(finished.status, 'completed');
+      const finishedInput = encodeURIComponent(JSON.stringify({ jobId: finished.id }));
+      assert.match(
+        (await app.inject(`/trpc/jobs.output?input=${finishedInput}`)).json().result.data.at(-1).message,
+        /trovati 3 nuovi/,
+      );
+    });
+});
+
+void test('tracked collection records source failures on stderr and finishes failed', async (t) => {
+  const { app, post, fake } = await serve(t, testProfile(), { sources: [createFakeSource({ failAfter: 0 })] });
+  await post('raccogli');
+  await fake.drain();
+  const tracked = (await app.inject('/trpc/jobs.list')).json().result.data[0];
+  assert.equal(tracked.status, 'failed');
+  const input = encodeURIComponent(JSON.stringify({ jobId: tracked.id }));
+  const output = (await app.inject(`/trpc/jobs.output?input=${input}`)).json().result.data;
+  assert.ok(output.some((line: { stream: string }) => line.stream === 'stderr'));
+});
+
+void test('tracked pareri report provider errors and can abort their retry wait through core jobs', async (t) => {
+  const profile = testProfile();
+  Object.assign(profile.parere, { key: 'invented-key', profile: 'Profilo inventato', manualReserve: 0 });
+  const { app, post, fake, read } = await serve(t, profile, { fetch: async () => new Response('', { status: 429 }) });
+  await post('raccogli');
+  await fake.drain();
+  await post('pareriMancanti');
+  await settle();
+  const tracked = (await app.inject('/trpc/jobs.list')).json().result.data[0];
+  assert.equal(tracked.action, 'lavoro.pareri');
+  assert.equal(tracked.status, 'running');
+  const input = encodeURIComponent(JSON.stringify({ jobId: tracked.id }));
+  const output = (await app.inject(`/trpc/jobs.output?input=${input}`)).json().result.data;
+  assert.ok(output.some((line: { stream: string }) => line.stream === 'stderr'));
+  assert.equal(
+    (await app.inject({ method: 'POST', url: '/trpc/jobs.cancel', payload: { jobId: tracked.id, confirmed: true } }))
+      .statusCode,
+    200,
+  );
+  await settle();
+  assert.equal(fake.pending(), 0);
+  assert.equal((await read()).pareri.running, false);
+  assert.equal((await app.inject('/trpc/jobs.list')).json().result.data[0].status, 'cancelled');
+  await post('pareriMancanti');
+  await fake.drain();
+  assert.equal((await app.inject('/trpc/jobs.list')).json().result.data[0].status, 'failed');
 });

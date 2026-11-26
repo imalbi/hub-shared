@@ -17,6 +17,8 @@
 
 - Catalog portability: tests must be independent of sibling modules; `server.test.ts` declares its manual-field fixture inline. Iren cards without a town use `SearchInput.location`; the Parere prompt takes qualifications only from the supplied profile.
 
+- `e2e/hold.ts` pauses every fake source: cancellation before the first collection must not insert partial rows that change later equal-score ordering.
+
 - `e2e/root/lavoro/server.ts` seeds applications that earlier specs can mutate; Candidature checks independent of status use `?candidature=all`, since the default pending segment may no longer contain the seeded row.
 
 - `config.ts`: source scopes stay under `search.<site>` and are required when enabled globally or by a query override; personal geographic/employer defaults are forbidden. `harness.ts` supplies explicit invented source scopes for fixtures.
@@ -24,3 +26,7 @@
 - `ingest.ts`: incomplete non-blacklisted rows bypass the known-URL cache on rediscovery. Repair them in place only after recovering text (including card text); failed retries preserve the entire saved row and related state. Complete rows remain known. A source missing flag may indicate a partial abstract (Iren/Oracle), so text alone must not clear it.
 
 - `mail-check.ts` prunes old unlinked read markers outside the configured windows plus 30 days, preserves unresolved proposal references, and expires resolved proposals by creation age after 90 days. Recheck application existence after model awaits before links/proposals are written. Imported date-only values and mail search boundaries use local calendar days.
+
+- `server.ts` tracks collection/prova and automatic Pareri with `deps.trackJob`; core cancellation must abort the same controller as the module action. `ui.tsx` activities claim the matching `jobAction` so the ball keeps one rich entry. Pass the injected clock to `sameCompanyApplications` so company badges and application lists age together.
+
+- Job output is readable by paired devices: Pareri logs contain aggregate counts and `opinionFailure` categories only, never posting keys, companies, roles, verdicts or provider response text.

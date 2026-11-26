@@ -17,6 +17,33 @@ test.afterEach(async ({ pc }) => {
       await pc.post('/trpc/lavoro.addresses.remove', { data: { key: 'fake-interview-key', address: row.address } });
 });
 
+test('tracked collection has one rich activity and streams into Jobs until cancelled', async ({ page, pc }) => {
+  await page.setViewportSize({ width: 3840, height: 2160 });
+  await pc.post(`${SERVER_URL}/__fake/player`, { data: { gone: true } });
+  writeFileSync(holdFile, '');
+  try {
+    await page.goto('/desk/ricerca');
+    await page.getByRole('button', { name: 'Raccogli', exact: true }).click();
+    const ball = page.getByRole('button', { name: 'Attività in corso: Raccogli annunci', exact: true });
+    await expect(ball).toBeVisible();
+    await ball.click();
+    await expect(page.getByRole('button', { name: 'Apri Raccogli annunci', exact: true })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /Apri.*job/ })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.goto('/desk/system?tab=jobs');
+    await expect(page.getByRole('button', { name: /lavoro\.raccogli In esecuzione/ })).toBeVisible();
+    await expect(page.getByText(/0\/\d+ ricerche/).first()).toBeVisible();
+    await expect(ball).toBeVisible();
+    await page.screenshot({ path: '/tmp/hub-110-jobs-4k.png' });
+    await holdButton(page, page.getByRole('button', { name: 'Tieni premuto per annullare job' }));
+    await expect(page.getByRole('button', { name: /lavoro\.raccogli Annullato/ }).first()).toBeVisible();
+    await expect(ball).toHaveCount(0);
+  } finally {
+    rmSync(holdFile, { force: true });
+    await pc.post(`${SERVER_URL}/__fake/player`, { data: { gone: false } });
+  }
+});
+
 test('empty rules and an empty trial show their empty states', async ({ page }) => {
   await page.route('**/trpc/*', async (route) => {
     if (!route.request().url().includes('lavoro.list') && !route.request().url().includes('lavoro.state'))
@@ -600,7 +627,7 @@ test.describe('Ricerca lavoro zone (read-only)', () => {
     // Return to Da valutare
     await page.getByRole('button', { name: 'Da valutare 6' }).click();
 
-    // 11. Collection progress and Annulla control. The fake Indeed search waits while the hold file exists, so the
+    // 11. Collection progress and Annulla control. The fake sources wait while the hold file exists, so the
     // collection is still running when Annulla is pressed, however loaded the machine is (it flaked under the
     // parallel verify, 2026-11-16).
     writeFileSync(holdFile, '');

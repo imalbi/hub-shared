@@ -116,17 +116,21 @@ const baseModule = createLavoroModule({
         catalog: () => fakeCards.filter((c) => c.site === 'indeed'),
       }),
     ),
-    createFakeSource({
-      name: 'reteinformaticalavoro',
-      kind: 'list',
-      delayMs: 200,
-      catalog: () => fakeCards.filter((c) => c.site === 'reteinformaticalavoro'),
-    }),
-    createFakeSource({
-      name: 'linkedin',
-      delayMs: 200,
-      catalog: () => fakeCards.filter((c) => c.site === 'linkedin'),
-    }),
+    held(
+      createFakeSource({
+        name: 'reteinformaticalavoro',
+        kind: 'list',
+        delayMs: 200,
+        catalog: () => fakeCards.filter((c) => c.site === 'reteinformaticalavoro'),
+      }),
+    ),
+    held(
+      createFakeSource({
+        name: 'linkedin',
+        delayMs: 200,
+        catalog: () => fakeCards.filter((c) => c.site === 'linkedin'),
+      }),
+    ),
   ],
   lookup: async () => ['93.184.216.34'],
   fetch: async (input, init) => {

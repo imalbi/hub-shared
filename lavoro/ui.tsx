@@ -1163,6 +1163,7 @@ function useCollectionActivity(): ModuleActivity | null {
   const { kind, searchesDone, searchesTotal } = state.collection;
   return {
     id: 'collection',
+    jobAction: kind === 'prova' ? 'lavoro.prova' : 'lavoro.raccogli',
     label: kind === 'prova' ? copy.activity.prova : copy.activity.collect,
     detail: copy.activity.searches(Math.min(searchesDone, searchesTotal), searchesTotal),
     progress: searchesTotal > 0 ? Math.min(1, searchesDone / searchesTotal) : undefined,
@@ -1176,6 +1177,7 @@ function usePareriActivity(): ModuleActivity | null {
   const { done, remaining } = state.pareri;
   return {
     id: 'pareri',
+    jobAction: 'lavoro.pareri',
     label: copy.activity.pareri,
     detail: copy.pareri.running(done, done + remaining),
     progress: done + remaining > 0 ? done / (done + remaining) : undefined,

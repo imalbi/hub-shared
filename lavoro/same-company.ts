@@ -12,7 +12,7 @@ type Application = {
   interviews?: readonly { scheduledAt: number | Date }[] | null;
 };
 
-export function sameCompanyApplications(jobs: readonly Job[], applications: readonly Application[]) {
+export function sameCompanyApplications(jobs: readonly Job[], applications: readonly Application[], now = Date.now()) {
   const jobsByKey = new Map(jobs.map((job) => [job.key, job]));
   const byCompany = new Map<string, (CompanyApplication & { key: string })[]>();
   for (const application of applications) {
@@ -26,7 +26,7 @@ export function sameCompanyApplications(jobs: readonly Job[], applications: read
       key: job.key,
       title: job.title,
       appliedAt: application.appliedAt,
-      status: effectiveApplicationStatus(application),
+      status: effectiveApplicationStatus(application, now),
     });
     byCompany.set(company, list);
   }

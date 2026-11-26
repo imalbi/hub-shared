@@ -473,7 +473,7 @@ export function createLavoroModule({
     // Impostazioni draws its form and checks a save with the strict profile; loading stays tolerant, as above.
     settingsSchema: profileSchema,
     migrations: fileURLToPath(new URL('./drizzle', import.meta.url)),
-    create({ config, db, run, fetch, log, capabilities }) {
+    create({ config, db, run, fetch, log, capabilities, trackJob }) {
       const mail = capabilities.get('mail');
       const parsedProfile = profile ? { success: true as const, data: profile } : profileSchema.safeParse(config);
       const registry = new Map(sources.map((source) => [source.name, source]));
@@ -617,6 +617,9 @@ export function createLavoroModule({
           );
         pareri = { running: true, done: 0, remaining: candidates.length, reason: null, date: clock.now() };
         const entry = { controller: new AbortController(), done: Promise.resolve() };
+        const job = trackJob('lavoro.pareri', { onCancel: () => entry.controller.abort() });
+        let failed = false;
+        job.log(`Pareri avviati: ${candidates.length} annunci`);
         pareriWork = entry;
         async function work() {
           if (!pareri) return;
@@ -635,10 +638,12 @@ export function createLavoroModule({
               try {
                 await judge(row.key, profile.dailyCap - profile.manualReserve, entry.controller.signal);
                 pareri.done++;
+                job.log(`Pareri completati: ${pareri.done}`);
                 pareri.remaining--;
                 break;
               } catch (error) {
                 if (entry.controller.signal.aborted) break;
+                job.log(`[parere] ${opinionFailure(error)}`, 'stderr');
                 if (error instanceof LlmGateError && error.reason === 'cap') {
                   pareri.reason = 'limite giornaliero';
                   break;
@@ -656,6 +661,7 @@ export function createLavoroModule({
                   await clock.sleep(60_000, entry.controller.signal);
                   continue;
                 }
+                failed = true;
                 log.warn({ reason: opinionFailure(error) }, 'Parere failed');
                 pareri.remaining--;
                 break;
@@ -666,9 +672,21 @@ export function createLavoroModule({
           }
         }
         entry.done = work()
-          .catch(() => log.error('Pareri run failed'))
+          .catch(() => {
+            failed = true;
+            job.log('Esecuzione pareri interrotta da un errore', 'stderr');
+            log.error('Pareri run failed');
+          })
           .finally(() => {
-            if (pareri) pareri.running = false;
+            if (pareri?.reason) {
+              failed = true;
+              job.log(`Pareri interrotti: ${pareri.reason}`, 'stderr');
+            }
+            if (pareri) {
+              pareri.running = false;
+              job.log(`Pareri conclusi: ${pareri.done} completati, ${pareri.remaining} rimanenti`);
+            }
+            job.finish(entry.controller.signal.aborted ? 'cancelled' : failed ? 'failed' : 'completed');
             pareriWork = undefined;
             void live.notify();
           });
@@ -791,6 +809,7 @@ export function createLavoroModule({
         const companyApplications = sameCompanyApplications(
           allJobs,
           [...allApplications].map(([key, application]) => ({ key, ...application })),
+          clock.now(),
         );
         const mappedJobs: JobRow[] = allJobs.map((j) => ({
           ...j,
@@ -880,16 +899,35 @@ export function createLavoroModule({
       function start(kind: CollectionKind) {
         const validProfile = ready();
         if (active) throw new TRPCError({ code: 'CONFLICT', message: 'collection-running' });
-        const entry = { controller: new AbortController(), progress: null as Progress | null, done: Promise.resolve() };
+        const entry: { controller: AbortController; progress: Progress | null; done: Promise<void> } = {
+          controller: new AbortController(),
+          progress: null,
+          done: Promise.resolve(),
+        };
+        const job = trackJob(kind === 'prova' ? 'lavoro.prova' : 'lavoro.raccogli', {
+          onCancel: () => entry.controller.abort(),
+        });
+        let status: 'completed' | 'failed' | 'cancelled' = 'failed';
         active = entry;
         dryRun = null;
         dryRunRequirements = null;
         const deps = { db, profile: validProfile, sources: registry, clock, fetch, log, run };
         entry.done = runCollection(deps, kind, entry.controller.signal, (progress) => {
+          const previous = entry.progress;
+          if (!previous || progress.site !== previous.site || progress.searchesDone !== previous.searchesDone)
+            job.log(
+              `[${progress.site ?? 'raccolta'}] ${progress.searchesDone}/${progress.searchesTotal} ricerche; trovati ${progress.newCount} nuovi, ${progress.excludedCount} esclusi`,
+            );
+          if (progress.failedSearches > (previous?.failedSearches ?? 0))
+            job.log(`Ricerche non riuscite: ${progress.failedSearches}`, 'stderr');
           entry.progress = progress;
           void live.notify();
         })
           .then((outcome) => {
+            status = outcome.status === 'done' ? 'completed' : outcome.status === 'cancelled' ? 'cancelled' : 'failed';
+            const progress = entry.progress;
+            if (progress)
+              job.log(`Raccolta conclusa: trovati ${progress.newCount} nuovi, ${progress.excludedCount} esclusi`);
             if (kind === 'prova') {
               dryRun = outcome.dryRun;
               dryRunRequirements = outcome.requirements;
@@ -898,8 +936,12 @@ export function createLavoroModule({
               startPareri();
           })
           // No payload: an error from a source or a driver can carry a URL or a row.
-          .catch(() => log.error('Lavoro collection crashed'))
+          .catch(() => {
+            job.log('Raccolta interrotta da un errore', 'stderr');
+            log.error('Lavoro collection crashed');
+          })
           .finally(() => {
+            job.finish(entry.controller.signal.aborted ? 'cancelled' : status);
             active = undefined;
             void live.notify();
           });
