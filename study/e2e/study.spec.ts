@@ -396,7 +396,7 @@ test('Ripasso lists threads, half days, open steps and errors, and ticking there
 test('the Studio tab bar names what each tab holds, and an old Materie link still opens it', async ({ page }) => {
   await page.goto(`${PC_URL}/desk/studio`);
   await expect(page.getByRole('tab').first()).toBeVisible();
-  await expect(page.getByRole('tab')).toHaveText(['Oggi', 'Piano', 'Ripasso', 'Libreria', 'Materie']);
+  await expect(page.getByRole('tab')).toHaveText(['Oggi', 'Piano', 'Ripasso', 'Libreria', 'Materie', 'Backlog']);
   await page.goto(`${PC_URL}/desk/studio?tab=piani`);
   await expect(page.getByRole('tab', { name: 'Materie', exact: true })).toHaveAttribute('aria-selected', 'true');
 });

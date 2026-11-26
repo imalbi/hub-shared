@@ -122,6 +122,7 @@ for (const theme of [
       { name: 'Materie', id: 'piani' },
       { name: 'Libreria', id: 'libreria' },
       { name: 'Ripasso', id: 'ripasso' },
+      { name: 'Backlog', id: 'backlog' },
       { name: 'Oggi lungo', id: 'studio', long: true },
     ]) {
       test(`${tab.name} ${size.width} ${theme.id}`, async ({ page }) => {
@@ -131,7 +132,29 @@ for (const theme of [
           await page.emulateMedia({ reducedMotion: 'reduce' });
           await freezePomodoro(page);
           await page.clock.setFixedTime(new Date('2026-11-04T12:00:00Z'));
-          await answerQueries(page, { health: { ok: true, uptime: 42 }, 'pomodoro.today': [] });
+          await answerQueries(page, {
+            health: { ok: true, uptime: 42 },
+            'pomodoro.today': [],
+            'study.backlog': [
+              {
+                position: 1,
+                id: 'visual-course',
+                title: 'Corso di esempio',
+                note: 'Un argomento alla volta, quando ho tempo.',
+                url: 'https://example.com/course',
+                status: 'todo',
+              },
+              { position: 2, id: 'visual-active', title: 'Riprendere le basi', note: '', url: '', status: 'active' },
+              {
+                position: 3,
+                id: 'visual-completed',
+                title: 'Introduzione completata',
+                note: '',
+                url: '',
+                status: 'completed',
+              },
+            ],
+          });
           await page.goto('/desk/settings/appearance');
           await chooseTheme(page, theme.name);
           await page.goto(`/desk/studio?tab=${tab.id}`);
@@ -139,6 +162,8 @@ for (const theme of [
             await expect(page.getByRole('heading', { name: 'La foglia' })).toBeVisible();
             await expect(page.getByText('Sessioni completate oggi: 0')).toBeVisible();
           } else if (tab.id === 'ripasso') await expect(page.getByText('Foglio 1, es. 3')).toBeVisible();
+          else if (tab.id === 'backlog')
+            await expect(page.getByRole('heading', { name: 'Corso di esempio' })).toBeVisible();
           else if (tab.id === 'libreria') await expect(page.getByText('dispensa.pdf', { exact: false })).toBeVisible();
           else await expect(page.getByText('Piano di esempio').first()).toBeVisible();
           await page.evaluate(async () => {

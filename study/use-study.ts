@@ -11,6 +11,7 @@ export type StudyHeader = inferRouterOutputs<StudyRouter>['active'][number];
 export type StudyDayBody = inferRouterOutputs<StudyRouter>['daysById'][number];
 export type StudyProgressRow = inferRouterOutputs<StudyRouter>['progress'][number];
 export type StudyError = inferRouterOutputs<StudyRouter>['errors'][number];
+export type StudyBacklogEntry = inferRouterOutputs<StudyRouter>['backlog'][number];
 export type StudyReview = inferRouterOutputs<StudyRouter>['review'];
 export type StudyDay = StudyIndex['days'][number] | StudyIndex['hiddenDays'][number];
 export const studyClient = createModuleClient<typeof studyModule>('study');

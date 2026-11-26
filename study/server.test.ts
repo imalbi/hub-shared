@@ -723,9 +723,12 @@ void test('catalog actions retain their registry metadata and input schemas', as
   const own = actions.filter((action) => action.path.startsWith('study.'));
   assert.deepEqual(own.map((action) => action.path).toSorted(), [
     'study.activate',
+    'study.deleteBacklog',
     'study.openMaterial',
     'study.openToday',
+    'study.saveBacklog',
     'study.setAutonomy',
+    'study.setBacklogStatus',
     'study.setCurrent',
     'study.setError',
     'study.setMix',

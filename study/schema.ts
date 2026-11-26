@@ -1,5 +1,16 @@
 import { integer, primaryKey, sqliteTable, text } from '../../apps/server/src/core/module-db.ts';
 
+export const learningBacklog = sqliteTable('learning_backlog', {
+  position: integer('position').primaryKey({ autoIncrement: true }),
+  id: text('id').notNull().unique(),
+  title: text('title').notNull(),
+  note: text('note').notNull().default(''),
+  url: text('url').notNull().default(''),
+  status: text('status', { enum: ['todo', 'active', 'completed'] })
+    .notNull()
+    .default('todo'),
+});
+
 export const plans = sqliteTable('plans', {
   id: text('id').primaryKey(),
   version: integer('version').notNull(),

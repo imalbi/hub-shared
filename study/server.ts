@@ -15,6 +15,7 @@ import { activeHeaders, GLOBAL, readDays, readDaysById, readIndex, searchDays, s
 import { plans, preferences, progress } from './schema.ts';
 import { savePlan } from './store.ts';
 import { createStateWriter } from './state.ts';
+import { backlogInput, backlogStatus, deleteBacklog, readBacklog, saveBacklog, setBacklogStatus } from './backlog.ts';
 
 export const studyModule = defineModule({
   name: 'study',
@@ -173,6 +174,23 @@ export const studyModule = defineModule({
             save(input.plan, 'autonomy', input.id, input.value);
             state.schedule(input.plan);
           }),
+        backlog: protectedProcedure.query(() => readBacklog(db)),
+        saveBacklog: protectedProcedure
+          .meta({ label: 'Salva nel backlog', description: 'Create or edit an independent learning backlog entry' })
+          .input(backlogInput)
+          .mutation(({ input }) => saveBacklog(db, input)),
+        setBacklogStatus: protectedProcedure
+          .meta({ label: 'Stato backlog', description: 'Complete or reopen a learning backlog entry' })
+          .input(z.object({ id: z.string().min(1), status: backlogStatus }))
+          .mutation(({ input }) => setBacklogStatus(db, input.id, input.status)),
+        deleteBacklog: protectedProcedure
+          .meta({
+            label: 'Elimina dal backlog',
+            danger: true,
+            description: 'Delete a learning backlog entry after confirmation',
+          })
+          .input(z.object({ id: z.string().min(1), confirmed: z.literal(true) }))
+          .mutation(({ input }) => deleteBacklog(db, input.id)),
         errors: protectedProcedure.query(() => readErrors(db)),
         review: protectedProcedure.query(() => readReview(db)),
         setError: protectedProcedure

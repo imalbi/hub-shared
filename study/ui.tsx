@@ -5,6 +5,7 @@ import { m } from './copy.ts';
 import { studyDays } from './records.ts';
 import { useStudyDaySummary, useStudyTodayLines } from './today-line.ts';
 import { StudyLibrary } from './library.tsx';
+import { StudyBacklog } from './backlog.tsx';
 import { useStudyCalendarItems } from './calendar.ts';
 import { StudyPlan } from './plan.tsx';
 import { StudyPlans } from './plans.tsx';
@@ -24,6 +25,7 @@ export default {
     { zone: 'studio', id: 'ripasso', label: m.study_review, component: StudyReview },
     { zone: 'studio', id: 'libreria', label: m.study_library, component: StudyLibrary },
     { zone: 'studio', id: 'piani', label: m.study_subjects, component: StudyPlans },
+    { zone: 'studio', id: 'backlog', label: m.study_backlog, component: StudyBacklog },
   ],
   widgets: [{ id: 'study', label: m.zone_study, sizes: ['small', 'medium', 'large'], component: StudyWidget }],
 } satisfies ModuleUI;
