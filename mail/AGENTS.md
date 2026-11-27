@@ -8,3 +8,5 @@
 - Web `ui.tsx` exports `useAvailable`, `widgets` (`MailWidget`), `deck` (`MailTile` at `desk` index 8), `sections` (`PostaSection` in `messages`, `fill: true`), `todayItems` (`useMailTodayLines`), and `records` (`mailMessages`). Italian copy lives in `copy.ts`.
 
 - `live.ts` keeps the full 100-row listing in internal `MailSnapshot.window` for notification identity checks; `router.ts` strips it for both PC and paired clients. Never restore a sender-date watermark: future or delayed mail must not suppress new IDs.
+
+- `module.ts` starts the shared watcher for notifications or capability listeners; listener errors log only a fixed warning. The first successful snapshot per account is a baseline, including when notifications are off.

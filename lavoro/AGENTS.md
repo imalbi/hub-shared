@@ -32,3 +32,5 @@
 - Job output is readable by paired devices: Pareri logs contain aggregate counts and `opinionFailure` categories only, never posting keys, companies, roles, verdicts or provider response text.
 
 - Collection/prova and Pareri activity links open `/desk/system?tab=jobs` for progress, logs and cancellation; result links continue to open Ricerca.
+
+- `server.ts` debounces MailCapability events for configured accounts; events during an active mail check coalesce into one follow-up. Close unsubscribes and clears both event and fallback timers before awaiting work.

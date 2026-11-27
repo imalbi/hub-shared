@@ -444,8 +444,11 @@ function safeJson(text: string): unknown {
   }
 }
 
+export const MAIL_EVENT_DEBOUNCE_MS = 5_000;
+
 export function createLavoroModule({
   sources = [],
+  mailEventDebounceMs = MAIL_EVENT_DEBOUNCE_MS,
   clock = defaultClock,
   profile,
   lookup,
@@ -454,6 +457,7 @@ export function createLavoroModule({
   skillsDir = fileURLToPath(new URL('./skills/', import.meta.url)),
 }: {
   sources?: readonly Source[];
+  mailEventDebounceMs?: number;
   clock?: Clock;
   profile?: Profile;
   lookup?: (hostname: string) => Promise<string[]> | string[];
@@ -489,6 +493,10 @@ export function createLavoroModule({
       let mailState: MailCheckState | null = null;
       let mailWork: { controller: AbortController; done: Promise<void> } | undefined;
       let mailTimers: NodeJS.Timeout[] = [];
+      let mailEventTimer: NodeJS.Timeout | undefined;
+      let mailPendingRecheck = false;
+      let closing = false;
+      let unsubscribeMail: (() => void) | undefined;
 
       async function readState(): Promise<LavoroState> {
         // Paths and zod's messages name the query by index and the key; they never carry the values written.
@@ -952,7 +960,7 @@ export function createLavoroModule({
 
       /** One mail check at a time; the work reads only mail no earlier run read, so calling it often is cheap. */
       function startMailCheck() {
-        if (!mail || !mailConfig || mailConfig.accounts.length === 0 || mailWork) return false;
+        if (closing || !mail || !mailConfig || mailConfig.accounts.length === 0 || mailWork) return false;
         const entry = { controller: new AbortController(), done: Promise.resolve() };
         mailWork = entry;
         mailState = { running: true, done: 0, remaining: 0, reason: null, date: clock.now() };
@@ -972,13 +980,28 @@ export function createLavoroModule({
           .finally(() => {
             if (mailState) mailState.running = false;
             mailWork = undefined;
+            if (mailPendingRecheck && !closing && !entry.controller.signal.aborted) {
+              mailPendingRecheck = false;
+              scheduleMailCheck();
+            }
             void live.notify();
           });
         void live.notify();
         return true;
       }
+      function scheduleMailCheck() {
+        clearTimeout(mailEventTimer);
+        mailEventTimer = setTimeout(() => {
+          mailEventTimer = undefined;
+          if (mailWork) mailPendingRecheck = true;
+          else startMailCheck();
+        }, mailEventDebounceMs);
+        mailEventTimer.unref();
+      }
       if (mail && mailConfig?.auto && mailConfig.accounts.length > 0) {
-        // shortcut: a fixed ten minute poll while the server runs; step 39 owns mail polling without a page.
+        unsubscribeMail = mail.onNewMail((event) => {
+          if (!closing && mailConfig.accounts.includes(event.account)) scheduleMailCheck();
+        });
         mailTimers = [setTimeout(startMailCheck, 30_000), setInterval(startMailCheck, 1_800_000)];
         for (const timer of mailTimers) timer.unref();
       }
@@ -2693,6 +2716,10 @@ export function createLavoroModule({
         }),
         // A collection still running when the server stops is cancelled and awaited, so it never writes to a closed database.
         close: async () => {
+          closing = true;
+          unsubscribeMail?.();
+          clearTimeout(mailEventTimer);
+          mailPendingRecheck = false;
           active?.controller.abort();
           pareriWork?.controller.abort();
           mailWork?.controller.abort();

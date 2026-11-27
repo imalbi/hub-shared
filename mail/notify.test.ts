@@ -3,6 +3,10 @@ import { dirname } from 'node:path';
 import { afterEach, mock, test } from 'node:test';
 import { setImmediate as flush } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { createCapabilityRegistry, type NewMailEvent } from '../../apps/server/src/core/module.ts';
+import { createFocusHistory } from '../../apps/server/src/core/focus-history.ts';
+import { openDb } from '../../apps/server/src/db/index.ts';
+import { mailModule } from './module.ts';
 import { emptyConfig, type Config } from '../../apps/server/src/core/config.ts';
 import type { Run } from '../../apps/server/src/core/exec.ts';
 import { buildServer } from '../../apps/server/src/server.ts';
@@ -194,3 +198,100 @@ void test('future spam cannot silence a delayed unread arrival', () => {
   assert.equal(sent.length, 1);
   assert.match(sent[0]?.at(-1) ?? '', /Delayed/);
 });
+
+void test('fresh unread events are per account, baseline-free, and retain known IDs across failed polls', () => {
+  const events: NewMailEvent[] = [];
+  const sent: string[] = [];
+  const run: Run = (bin) => {
+    sent.push(bin);
+    return Promise.resolve({ stdout: '', stderr: '', code: 0 });
+  };
+  const observe = createNewMailNotifier(run, { notify: false, onNewMail: (event) => events.push(event) });
+  observe(state(account('work', [row('1', 'Old')]), account('personal', [])));
+  assert.deepEqual(events, []);
+  observe(
+    state(
+      account('work', [row('1', 'Old'), row('2', 'New'), row('3', 'New'), row('4', 'Read', true)]),
+      account('personal', [row('2', 'Other')]),
+    ),
+  );
+  assert.deepEqual(events, [
+    { account: 'work', messageIds: ['2', '3'] },
+    { account: 'personal', messageIds: ['2'] },
+  ]);
+  observe(state(account('work', [], 'failed')));
+  observe(state(account('work', [row('1', 'Old'), row('2', 'New'), row('3', 'New')])));
+  assert.equal(events.length, 2);
+  assert.deepEqual(sent, []);
+});
+
+for (const notify of [false, true]) {
+  void test(`mail capability isolates listeners and supports unsubscribe with notify=${notify}`, async (t) => {
+    mock.timers.enable({ apis: ['setInterval'] });
+    const db = openDb(':memory:');
+    const capabilities = createCapabilityRegistry();
+    const fakeRun = createFakeMailRun();
+    const sent: string[] = [];
+    const warnings: unknown[][] = [];
+    const events: NewMailEvent[] = [];
+    let id = '310';
+    const run: Run = async (bin, args, options) => {
+      if (bin === 'notify-send') sent.push(bin);
+      const result = await fakeRun(bin, args, options);
+      return { ...result, stdout: result.stdout.replaceAll('"310"', JSON.stringify(id)) };
+    };
+    const noop = () => undefined;
+    const log = {
+      level: 'info',
+      fatal: noop,
+      error: noop,
+      warn: (...args: unknown[]) => warnings.push(args),
+      info: noop,
+      debug: noop,
+      trace: noop,
+      silent: noop,
+      child: () => log,
+    };
+    const instance = mailModule.create({
+      config: { accounts: [{ account: 'work', label: 'Work' }], archiveMailbox: 'archive', notify },
+      run,
+      fetch,
+      log,
+      zones: new Set(),
+      focusHistory: createFocusHistory(db),
+      capabilities,
+    });
+    t.after(async () => {
+      await instance.close?.();
+      db.$client.close();
+    });
+    const mail = capabilities.get('mail');
+    assert.ok(mail);
+    const stopThrowing = mail.onNewMail(() => {
+      throw new Error('private payload must stay out of logs');
+    });
+    const stop = mail.onNewMail((event) => events.push(event));
+    await flush();
+    await flush();
+    assert.deepEqual(events, []);
+    id = 'new';
+    mock.timers.tick(MAIL_POLL_MS);
+    await flush();
+    await flush();
+    assert.deepEqual(events, [{ account: 'work', messageIds: ['new'] }]);
+    assert.deepEqual(warnings, [['Mail listener failed']]);
+    assert.equal(sent.length, notify ? 1 : 0);
+    stop();
+    stopThrowing();
+    id = 'later';
+    mock.timers.tick(MAIL_POLL_MS);
+    await flush();
+    await flush();
+    assert.equal(events.length, 1);
+    await instance.close?.();
+    id = 'closed';
+    mock.timers.tick(MAIL_POLL_MS);
+    await flush();
+    assert.equal(events.length, 1);
+  });
+}

@@ -248,6 +248,7 @@ function fakeMailCapability(
   };
   return {
     accounts: () => [{ label: 'Work', account: 'work' }],
+    onNewMail: () => () => {},
     async listThreadEntries(account) {
       calls.push(['listThreadEntries', account]);
       return { entries: baseEntries, truncated: false };
