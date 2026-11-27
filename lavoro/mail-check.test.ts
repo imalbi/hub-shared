@@ -278,7 +278,7 @@ function setup({ answers = {}, bodies = {}, config = {}, sender }: Setup = {}) {
       gateCalls.push(options);
       return gate(cap, call, options);
     },
-    { used: gate.used },
+    { used: gate.used, setStore: gate.setStore },
   );
   const fetcher: typeof fetch = async (url, init) => {
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '');

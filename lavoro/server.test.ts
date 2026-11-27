@@ -190,7 +190,7 @@ async function serve(
   wiring.gate = Object.assign(
     <T>(cap: number, call: (signal: AbortSignal) => Promise<T>, options?: { counted?: boolean }) =>
       gate(cap, call, { counted: options?.counted }),
-    { used: gate.used },
+    { used: gate.used, setStore: gate.setStore },
   );
   const notifications: string[][] = [];
   const app = buildServer({
