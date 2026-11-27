@@ -25,3 +25,18 @@ void test('randstad AG3 extracts exact fields, cleans description and recognizes
 void test('randstad rejects unknown listing layouts', () => {
   assert.throws(() => read('<html>Unexpected layout</html>'));
 });
+
+void test('randstad accepts nullable optional sub-objects and skips non-JSON flight scripts', () => {
+  const withNulls =
+    listing([2])
+      .replace(/\\"clientDetail\\":\{[^}]+\}/u, '\\"clientDetail\\":null')
+      .replace(/\\"workLocationAddress\\":\{[^}]+\}/u, '\\"workLocationAddress\\":null')
+      .replace(/\\"postingDetail\\":\{[^}]+\}/u, '\\"postingDetail\\":null')
+      .replace(/\\"payRates\\":\{[^}]+\}/u, '\\"payRates\\":null') + '<script>self.__next_f.push(broken)</script>';
+  const cards = read(withNulls).cards;
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0]?.company, 'Randstad');
+  assert.equal(cards[0]?.location, '');
+  assert.equal(cards[0]?.postedAt, undefined);
+  assert.equal(cards[0]?.salary, undefined);
+});

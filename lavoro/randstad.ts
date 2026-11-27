@@ -7,21 +7,26 @@ import type { Source } from './source.ts';
 const job = z.object({
   id: z.string().min(1),
   jobTitle: z.string().min(1),
-  clientDetail: z.object({ name: z.string().nullable().optional() }).optional(),
+  clientDetail: z.object({ name: z.string().nullable().optional() }).nullable().optional(),
   webDetails: z.object({ postedUrl: z.array(z.object({ href: z.string(), lang: z.string() })).min(1) }),
   jobInformation: z.object({ jobTypes: z.array(z.string()) }),
-  description: z.object({ shortDescription: z.string() }).optional(),
+  description: z.object({ shortDescription: z.string().nullable().optional() }).nullable().optional(),
   workLocationAddress: z
-    .object({ locality: z.string().optional(), administrativeArea: z.string().optional() })
+    .object({
+      locality: z.string().nullable().optional(),
+      administrativeArea: z.string().nullable().optional(),
+    })
+    .nullable()
     .optional(),
-  postingDetail: z.object({ postingTime: z.string() }).optional(),
+  postingDetail: z.object({ postingTime: z.string().nullable().optional() }).nullable().optional(),
   payRates: z
     .object({
       salaryMin: z.number().nullable().optional(),
       salaryMax: z.number().nullable().optional(),
-      currencySymbol: z.string().optional(),
-      unitDisplay: z.string().optional(),
+      currencySymbol: z.string().nullable().optional(),
+      unitDisplay: z.string().nullable().optional(),
     })
+    .nullable()
     .optional(),
 });
 const values = z.object({
@@ -61,7 +66,7 @@ export function readRandstad(raw: string, url: string): AgencyPage {
       if (!href) throw new Error('missing posting URL');
       const pay = item.payRates;
       const amounts = [pay?.salaryMin, pay?.salaryMax].filter((n) => n !== null && n !== undefined && n > 0);
-      const date = agencyDate(item.postingDetail?.postingTime);
+      const date = agencyDate(item.postingDetail?.postingTime ?? undefined);
       return {
         url: agencyUrl(href, url, '/offerte-lavoro/'),
         title: item.jobTitle,
