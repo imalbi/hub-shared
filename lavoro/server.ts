@@ -23,6 +23,10 @@ import { createIrenSource } from './iren.ts';
 import { createRssSource } from './rss.ts';
 import { createAltamiraSource } from './altamira.ts';
 import { createSmatSource } from './smat.ts';
+import { createRandstadSource } from './randstad.ts';
+import { createAdeccoSource } from './adecco.ts';
+import { createGigroupSource } from './gigroup.ts';
+import { createUmanaSource } from './umana.ts';
 import { createSuccessFactorsSource } from './successfactors.ts';
 import { createOracleSource } from './oracle.ts';
 import { createAvatureSource } from './avature.ts';
@@ -2806,6 +2810,10 @@ export default createLavoroModule({
     createRssSource(),
     createAltamiraSource(),
     createSmatSource(),
+    createRandstadSource(),
+    createAdeccoSource(),
+    createGigroupSource(),
+    createUmanaSource(),
     createOracleSource(),
     createAvatureSource(),
     createManpowerSource(),

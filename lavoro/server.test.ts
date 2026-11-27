@@ -1,3 +1,7 @@
+import { listing as randstadListing, detail as randstadDetail } from './fake-randstad.ts';
+import { listing as adeccoListing, detail as adeccoDetail } from './fake-adecco.ts';
+import { listing as gigroupListing, detail as gigroupDetail } from './fake-gigroup.ts';
+import { listing as umanaListing, detail as umanaDetail } from './fake-umana.ts';
 import { detail as manpowerDetail, listing as manpowerListing } from './fake-manpower.ts';
 import { algoliaPage, bootstrapHtml, hit as synergieHit, json as synergieJson } from './fake-synergie.ts';
 import {
@@ -4721,6 +4725,11 @@ void test('U4: private module schema walker marks all sensitive fields manual', 
     'private:lavoro.search.workday.maxPages',
     'private:lavoro.search.synergie.maxPages',
     'private:lavoro.search.altamira.maxPages',
+    'private:lavoro.search.randstad.maxPages',
+    'private:lavoro.search.adecco.maxPages',
+    'private:lavoro.search.gigroup.maxPages',
+    'private:lavoro.search.umana.maxPages',
+
     'private:lavoro.parere.profile',
   ]);
   const missing: string[] = [];
@@ -5671,3 +5680,74 @@ void test('the discovered module registers smat', async (t) => {
   );
   assert.equal(calls, 1);
 });
+
+for (const fixture of [
+  {
+    site: 'randstad',
+    settings: { regions: ['examplia'], cities: ['exampleville'], functions: ['ict'] },
+    listing: randstadListing,
+    detail: randstadDetail,
+  },
+  {
+    site: 'adecco',
+    settings: { cities: ['exampleville'], functions: ['ict'] },
+    listing: adeccoListing,
+    detail: adeccoDetail,
+  },
+  {
+    site: 'gigroup',
+    settings: { cities: ['exampleville'], functions: ['ict'] },
+    listing: gigroupListing,
+    detail: gigroupDetail,
+  },
+  {
+    site: 'umana',
+    settings: { regions: ['examplia'], provinces: ['ex'], functions: ['ict'] },
+    listing: umanaListing,
+    detail: umanaDetail,
+  },
+]) {
+  void test(`the discovered module registers and collects ${fixture.site}`, async (t) => {
+    const profile = testProfile((p) => {
+      Object.assign(p.search, { sites: [fixture.site], [fixture.site]: fixture.settings });
+      p.filter.allowedLocations = ['exampleville', 'examplia'];
+    });
+    let calls = 0;
+    const fetchFake: typeof fetch = async () => new Response(++calls === 1 ? fixture.listing() : fixture.detail());
+    const app = buildServer({
+      dbPath: ':memory:',
+      moduleRoots: [root],
+      onlyModules: ['lavoro'],
+      deps: { run: createFakeDesktop({ notifications: [] }), fetch: fetchFake },
+      config: { ...emptyConfig, modules: { lavoro: profile } },
+    });
+    t.after(() => app.close());
+    const started = await app.inject({
+      method: 'POST',
+      url: '/trpc/lavoro.prova',
+      headers: { 'content-type': 'application/json' },
+      payload: '{}',
+    });
+    assert.equal(started.statusCode, 200);
+    for (let turn = 0; ; turn++) {
+      const data: {
+        sources: string[];
+        collection: unknown;
+        last?: { kind: string; status: string };
+        dryRun: Array<{ site: string }> | null;
+      } = (await app.inject('/trpc/lavoro.state')).json().result.data;
+      if (data.collection === null && data.last?.kind === 'prova') {
+        assert.equal(data.last.status, 'done');
+        assert.deepEqual(data.sources, [fixture.site]);
+        assert.deepEqual(
+          data.dryRun?.map((row) => row.site),
+          [fixture.site],
+        );
+        break;
+      }
+      assert.ok(turn < 600, 'the dry run did not finish');
+      await delay(5);
+    }
+    assert.equal(calls, 2);
+  });
+}

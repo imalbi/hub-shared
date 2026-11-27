@@ -474,6 +474,7 @@ function commit(ctx: IngestContext, items: readonly Item[], dropped: readonly st
     };
     if (pending) {
       // Collection notifications and dry-run results already hold this reference.
+      known++;
       Object.assign(pending.selected, choice);
       pending.row = row;
     } else {

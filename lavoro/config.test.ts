@@ -413,3 +413,35 @@ void test('SuccessFactors defaults to HTML and requires a validated explicit loc
   assert.deepEqual(paths(parse({ mode: 'unified', locale: '../bad' })), ['search.successfactors.employers.0.locale']);
   assert.equal(profileSchema.safeParse(parse({ mode: 'unified', locale: 'it_IT' })).success, true);
 });
+
+for (const [site, settings] of Object.entries({
+  randstad: { regions: ['examplia'], cities: ['exampleville'], functions: ['ict'] },
+  adecco: { cities: ['exampleville'], functions: ['ict'] },
+  gigroup: { cities: ['exampleville'], functions: ['ict'] },
+  umana: { regions: ['examplia'], provinces: ['ex'], functions: ['ict'] },
+})) {
+  void test(`AG2 ${site} requires explicit scope globally and per query, defaults only maxPages, rejects non-slugs`, () => {
+    for (const queryOnly of [false, true]) {
+      const profile = inventedProfile();
+      Object.assign(
+        profile.search,
+        queryOnly
+          ? { sites: ['indeed'], queries: [{ name: 'Agency', keywords: 'web', sites: [site] }] }
+          : { sites: [site] },
+      );
+      assert.ok(paths(profile).includes(`search.${site}`));
+      Object.assign(profile.search, { [site]: settings });
+      const parsed = profileSchema.parse(profile);
+      assert.equal(
+        parsed.search[
+          site === 'randstad' ? 'randstad' : site === 'adecco' ? 'adecco' : site === 'gigroup' ? 'gigroup' : 'umana'
+        ]?.maxPages,
+        10,
+      );
+      for (const field of Object.keys(settings)) {
+        Object.assign(profile.search, { [site]: { ...settings, [field]: ['Bad/scope'] } });
+        assert.ok(paths(profile).includes(`search.${site}.${field}.0`));
+      }
+    }
+  });
+}

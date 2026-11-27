@@ -54,7 +54,14 @@ export function resolveCompany(company: string, aliases: Readonly<Record<string,
   return alias ? comparisonCompany(alias[1]) : normalized;
 }
 
-export const agencySites: ReadonlySet<string> = new Set(['manpower', 'synergie']);
+export const agencySites: ReadonlySet<string> = new Set([
+  'manpower',
+  'synergie',
+  'randstad',
+  'adecco',
+  'gigroup',
+  'umana',
+]);
 
 const fillerWords = new Set([
   'per',

@@ -20,6 +20,10 @@ const sites = [
   'rss',
   'altamira',
   'smat',
+  'randstad',
+  'adecco',
+  'gigroup',
+  'umana',
 ] as const;
 const siteLabels = {
   indeed: 'Indeed',
@@ -36,6 +40,10 @@ const siteLabels = {
   rss: 'RSS',
   altamira: 'Altamira',
   smat: 'Selezioni SMAT',
+  randstad: 'Randstad',
+  adecco: 'Adecco',
+  gigroup: 'Gi Group',
+  umana: 'Umana',
 };
 const site = z.enum(sites).meta({ optionLabels: siteLabels });
 const count = z.number().int().positive();
@@ -202,6 +210,28 @@ const company = z.string().min(1).meta({ title: 'Azienda', description: 'Nome mo
 const maxPages = count
   .default(10)
   .meta({ title: 'Pagine massime', description: 'Limite delle pagine da leggere.', unit: 'pagine' });
+const agencySlugs = z.array(z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u)).min(1);
+const agencyFunctions = agencySlugs.meta({ title: 'Funzioni', description: 'Slug delle categorie da leggere.' });
+const agencyCities = agencySlugs.meta({ title: 'Città', description: 'Slug delle città da leggere.' });
+const agencyRegions = agencySlugs.meta({ title: 'Regioni', description: 'Slug delle regioni da leggere.' });
+const randstad = z
+  .strictObject({ regions: agencyRegions, cities: agencyCities, functions: agencyFunctions, maxPages })
+  .meta({ title: 'Randstad', description: 'Ambiti pubblici delle offerte Randstad.' });
+const gigroup = z
+  .strictObject({ cities: agencyCities, functions: agencyFunctions, maxPages })
+  .meta({ title: 'Gi Group', description: 'Luoghi e funzioni delle offerte Gi Group.' });
+const umana = z
+  .strictObject({
+    regions: agencyRegions,
+    provinces: agencySlugs.meta({ title: 'Province', description: 'Sigle delle province in minuscolo.' }),
+    functions: agencyFunctions,
+    maxPages,
+  })
+  .meta({ title: 'Umana', description: 'Categorie Umana filtrate per regione e provincia.' });
+const adecco = z
+  .strictObject({ cities: agencyCities, functions: agencyFunctions, maxPages })
+  .meta({ title: 'Adecco', description: 'Luoghi e parole chiave delle offerte Adecco.' });
+
 const rss = z
   .strictObject({
     feeds: z
@@ -450,6 +480,10 @@ const search = z
     rss: rss.optional(),
     altamira: altamira.optional(),
     smat: smat.optional(),
+    randstad: randstad.optional(),
+    adecco: adecco.optional(),
+    gigroup: gigroup.optional(),
+    umana: umana.optional(),
     queries: z
       .array(query)
       .min(1)
@@ -824,6 +858,10 @@ export const profileSchema = z
       'rss',
       'altamira',
       'smat',
+      'randstad',
+      'adecco',
+      'gigroup',
+      'umana',
     ] as const) {
       if (enabled.has(site) && !profile.search[site]) {
         ctx.addIssue({ code: 'custom', path: ['search', site], message: `required when ${site} is enabled` });
