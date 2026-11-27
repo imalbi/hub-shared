@@ -43,6 +43,7 @@ void test('inPA postings are Stabile end to end: a diploma one is saved, a degre
     site: 'inpa',
     read: 5,
     fresh: 5,
+    known: 0,
     tooOld: 0,
     outsideLocation: 1,
     lowTitle: 0,

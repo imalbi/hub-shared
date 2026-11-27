@@ -47,6 +47,15 @@ export function comparisonCompany(company: string) {
   return words.join(' ');
 }
 
+/** Aliases use the same normalization on both sides as stored comparison names. */
+export function resolveCompany(company: string, aliases: Readonly<Record<string, string>> = {}) {
+  const normalized = comparisonCompany(company);
+  const alias = Object.entries(aliases).find(([name]) => comparisonCompany(name) === normalized);
+  return alias ? comparisonCompany(alias[1]) : normalized;
+}
+
+export const agencySites: ReadonlySet<string> = new Set(['manpower', 'synergie']);
+
 const fillerWords = new Set([
   'per',
   'di',
@@ -75,7 +84,15 @@ const trailingBracket = /\s*\(([^()]*)\)\s*$/u;
  */
 function comparisonTitle(title: string, location: string) {
   const place = plain(location);
-  const unplaced = title.replace(trailingBracket, (match, inside: string) => {
+  const parts = title.replace(/^[A-Z]{1,5}\s+[-–—]\s+/u, '').split(/\s+[-–—]\s+/u);
+  while (parts.length > 1) {
+    const tail = parts.at(-1) ?? '';
+    const words = plain(tail).split(' ').filter(Boolean);
+    const placeOnly = words.length > 0 && words.every((word) => ` ${place} italia italy `.includes(` ${word} `));
+    if (!placeOnly && !workModes.test(tail)) break;
+    parts.pop();
+  }
+  const unplaced = parts.join(' - ').replace(trailingBracket, (match, inside: string) => {
     const words = plain(inside).split(' ').filter(Boolean);
     const placeOnly = words.length > 0 && words.every((word) => ` ${place} `.includes(` ${word} `));
     return workModes.test(inside) || placeOnly ? '' : match;
@@ -89,6 +106,11 @@ function comparisonTitle(title: string, location: string) {
 }
 
 /** For spotting duplicates only: accents, the legal form, agency wording and word order are ignored. Stored in `jobs.comparison_key`, never used as the key. */
-export function comparisonKey(company: string, title: string, location = '') {
-  return `${comparisonCompany(company)}|${comparisonTitle(title, location)}`;
+export function comparisonKey(
+  company: string,
+  title: string,
+  location = '',
+  aliases: Readonly<Record<string, string>> = {},
+) {
+  return `${resolveCompany(company, aliases)}|${comparisonTitle(title, location)}`;
 }

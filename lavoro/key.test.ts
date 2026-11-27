@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { comparisonCompany, comparisonKey, postingKey } from './key.ts';
+import { comparisonCompany, comparisonKey, postingKey, resolveCompany } from './key.ts';
 
 void test('the stored key is company and title, lowercased, with runs of separators collapsed', () => {
   assert.equal(
@@ -86,4 +86,29 @@ void test('a trailing place in brackets does not split one posting from its appl
 void test('a bracket that is not the place of the posting still tells two postings apart', () => {
   assert.notEqual(comparisonKey('Acme', 'Sviluppatore (Junior)'), comparisonKey('Acme', 'Sviluppatore (Senior)'));
   assert.notEqual(comparisonKey('Acme', 'Sviluppatore (Forlì)', 'Milano'), comparisonKey('Acme', 'Sviluppatore'));
+});
+
+void test('dash place tails and uppercase business-unit prefixes do not split a posting', () => {
+  for (const title of [
+    'AER - Frontend developer - Exampleville',
+    'VEL – Frontend developer – Italia',
+    'Frontend developer - Full remote',
+    "Frontend developer - Cirie'",
+    'Frontend developer - Exampleville - Italy',
+  ]) {
+    assert.equal(
+      comparisonKey('Acme', title, "Exampleville, Cirie', Italy"),
+      comparisonKey('Acme', 'Frontend developer'),
+    );
+  }
+  assert.notEqual(comparisonKey('Acme', 'Developer - React'), comparisonKey('Acme', 'Developer - Angular'));
+  assert.notEqual(comparisonKey('Acme', 'Developer - Otherplace', 'Exampleville'), comparisonKey('Acme', 'Developer'));
+});
+
+void test('company aliases normalize both sides without changing the stored identity', () => {
+  const aliases = { 'CONTROLLATA S.r.l.': 'Gruppo Madre' };
+  assert.equal(resolveCompany('Controllata S.r.l.', aliases), 'madre');
+  assert.equal(resolveCompany('Unmapped Ltd', aliases), 'unmapped');
+  assert.equal(comparisonKey('Controllata', 'Developer', '', aliases), comparisonKey('Madre', 'Developer'));
+  assert.equal(postingKey('Controllata S.r.l.', 'Developer'), 'controllata s r l|developer');
 });

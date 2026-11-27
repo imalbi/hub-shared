@@ -1,0 +1,5 @@
+/** Invented descriptions shared by deduplication fixtures. */
+export const technicalDescription =
+  'Frontend developer per un team di prodotto. La persona realizza interfacce accessibili usando typescript, revisiona il codice con i colleghi, scrive verifiche automatiche e mantiene le integrazioni con servizi esterni. Il lavoro comprende analisi dei requisiti, progettazione dei componenti e documentazione delle scelte tecniche. Sono previsti affiancamento iniziale, formazione continua e collaborazione con progettisti e responsabili del prodotto.';
+export const differentDescription =
+  'Il magazziniere prepara gli ordini, registra le merci in entrata, verifica le bolle di trasporto e organizza gli scaffali. La mansione richiede precisione nella movimentazione dei materiali, controllo delle giacenze, gestione degli inventari e rispetto delle procedure di sicurezza negli spazi logistici. Il turno si svolge presso il deposito aziendale con uso di strumenti per imballaggio, etichettatura e spedizione.';

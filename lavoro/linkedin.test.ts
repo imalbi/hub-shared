@@ -315,6 +315,7 @@ void test('an outside hybrid posting is excluded after description and counted b
     site: 'linkedin',
     read: 1,
     fresh: 1,
+    known: 0,
     tooOld: 0,
     outsideLocation: 1,
     lowTitle: 0,

@@ -349,3 +349,26 @@ void test('employer hosts and avature listUrl reject internal/local/IP hostnames
     );
   }
 });
+
+void test('dedupe defaults contain no aliases and reject unsafe thresholds or lengths', () => {
+  assert.deepEqual(profileSchema.parse(inventedProfile()).dedupe, {
+    companyAliases: {},
+    descriptionSimilarity: 0.78,
+    minDescriptionChars: 200,
+  });
+  for (const dedupe of [
+    { descriptionSimilarity: 0.2 },
+    { descriptionSimilarity: 1.5 },
+    { minDescriptionChars: 0 },
+    { minDescriptionChars: 2.5 },
+  ]) {
+    assert.equal(profileSchema.safeParse({ ...inventedProfile(), dedupe }).success, false);
+  }
+  assert.deepEqual(
+    profileSchema.parse({
+      ...inventedProfile(),
+      dedupe: { companyAliases: { Acme: 'Beta' }, descriptionSimilarity: 1 },
+    }).dedupe.companyAliases,
+    { Acme: 'Beta' },
+  );
+});

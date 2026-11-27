@@ -36,7 +36,7 @@ const signal = new AbortController().signal;
 
 void test('official bando text is included in the current version and labelled in the prompt', async () => {
   const withBando = opinionInput(input.profile, { ...input.posting, bando: 'Diploma inventato' }, input.model);
-  assert.equal(withBando.version, 9);
+  assert.equal(withBando.version, 10);
   assert.equal(withBando.posting.bando, 'Diploma inventato');
   assert.notDeepEqual(withBando, input);
   const fake: typeof fetch = async (_url, init) => {
@@ -223,7 +223,7 @@ void test('codes is a required answer field, or a local model leaves it empty', 
 });
 
 void test('P1 a new answer parses with each of the four values and the current prompt version', async () => {
-  assert.equal(promptVersion, 9);
+  assert.equal(promptVersion, 10);
   for (const verdict of ['alta', 'media', 'bassa', 'fuori']) {
     const answer = { ...valid, verdict };
     const fake: typeof fetch = async () =>
@@ -276,4 +276,15 @@ void test('a place or mode the score already found compatible leaves the codes, 
   assert.deepEqual(dropSettledCodes(answer, ['torino:+3 (sede)', 'hybrid:+1 (modalità)']).codes, ['domain']);
   assert.deepEqual(dropSettledCodes(answer, ['trasferte:-1 (descr.)']).codes, answer.codes);
   assert.deepEqual(dropSettledCodes({ ...answer, verdict: 'fuori' }, ['torino:+3 (sede)']).codes, answer.codes);
+});
+
+void test('Caso B covers engineering roles open to graduates without professional domain experience', async () => {
+  const fake: typeof fetch = async (_url, init) => {
+    const text = requestBody(init?.body);
+    assert.ok(text.includes('anche se aperti a neolaureati'));
+    assert.ok(text.includes('competenze affini o universitarie'));
+    assert.ok(text.includes('RTOS'));
+    return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify(valid) }] } }] });
+  };
+  await fetchOpinion(fake, 'invented-key', input, signal);
 });

@@ -690,10 +690,17 @@ const candidatura = z.strictObject({
   }),
 });
 
+export const dedupeSchema = z.strictObject({
+  companyAliases: z.record(z.string().min(1), z.string().min(1)).default({}),
+  descriptionSimilarity: z.number().min(0.5).max(1).default(0.78),
+  minDescriptionChars: z.number().int().positive().default(200),
+});
+
 export const profileSchema = z
   .strictObject({
     search,
     sources: sourceAccess.default({}),
+    dedupe: dedupeSchema.default(dedupeSchema.parse({})),
     filter,
     weights,
     categories: z

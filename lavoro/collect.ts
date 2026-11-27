@@ -5,7 +5,7 @@ import { archiveGone } from './gone.ts';
 import type { Profile } from './config.ts';
 import { notification } from './copy.ts';
 import { expandSearches } from './expand.ts';
-import { createKnown, ingestSearch, rank, type DryRunRow } from './ingest.ts';
+import { type Accepted, createKnown, ingestSearch, rank, type DryRunRow } from './ingest.ts';
 import { comparisonCompany } from './key.ts';
 import { runPools } from './pool.ts';
 import { lte } from '../../apps/server/src/core/module-db.ts';
@@ -102,6 +102,7 @@ export async function runCollection(
     blocked: new Set(profile.filter.blockedCompanies.map(comparisonCompany)),
     seen: new Set<string>(),
     claimed: new Set<string>(),
+    accepted: new Map<string, Accepted>(),
   };
   const selected: Awaited<ReturnType<typeof ingestSearch>>['selected'] = [];
   const requirements: Record<string, number> = {};

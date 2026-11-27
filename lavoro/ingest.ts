@@ -1,12 +1,13 @@
-import { and, eq, gt, inArray, or, sql } from '../../apps/server/src/core/module-db.ts';
+import { and, eq, getTableColumns, gt, inArray, isNull, or, sql } from '../../apps/server/src/core/module-db.ts';
 import type { Db } from '../../apps/server/src/db/index.ts';
 import { firstMatchingRule, type BlacklistRule } from './blacklist.ts';
 import type { Profile } from './config.ts';
-import { comparisonCompany, comparisonKey, postingKey } from './key.ts';
+import { agencySites, comparisonCompany, comparisonKey, postingKey } from './key.ts';
 import { isNearMiss, nearMissTextLimit, trimNearMisses } from './near-miss.ts';
-import { blacklistRules, jobs, knownUrls, nearMisses, purgedJobs } from './schema.ts';
+import { blacklistRules, jobApplied, jobDeleted, jobs, knownUrls, nearMisses, purgedJobs } from './schema.ts';
 import type { createScorer } from './score.ts';
 import type { Card, Source, SourceContext } from './source.ts';
+import { canCompareDescriptions, descriptionSimilarity } from './similarity.ts';
 import type { WorkMode } from './work-mode.ts';
 
 // What happens to the cards of one finished search, in the order of the reference ("Flusso di una raccolta", step
@@ -33,6 +34,8 @@ export type DryRunRow = {
 };
 export type Selected = DryRunRow & { at: number };
 
+export type Accepted = { row: typeof jobs.$inferSelect; selected: Selected };
+
 export type IngestContext = {
   db: Db;
   scorer: ReturnType<typeof createScorer>;
@@ -48,6 +51,7 @@ export type IngestContext = {
   /** Shared by every search of the collection: URLs met and comparison keys already taken. */
   seen: Set<string>;
   claimed: Set<string>;
+  accepted: Map<string, Accepted>;
 };
 
 type Item = {
@@ -69,6 +73,7 @@ export const rank = (rows: Selected[]) => rows.toSorted((a, b) => b.total - a.to
 export type SearchCounts = {
   read: number;
   fresh: number;
+  known: number;
   /** Published more than `filter.maxAgeDays` ago. */
   tooOld: number;
   outsideLocation: number;
@@ -77,23 +82,29 @@ export type SearchCounts = {
   excludedRequirement: number;
 };
 
-const nothing = { selected: [] as Selected[], excluded: 0, requirements: {} as Record<string, number> };
+const nothing = { selected: [] as Selected[], excluded: 0, known: 0, requirements: {} as Record<string, number> };
 
 function readRules(db: Db): BlacklistRule[] {
   return db.select().from(blacklistRules).where(eq(blacklistRules.enabled, true)).all();
 }
 
-function readHistory(db: Db, items: readonly Item[]) {
-  const rows = db
-    .select({
-      key: jobs.key,
-      comparisonKey: jobs.comparisonKey,
-      url: jobs.url,
-      blacklistRule: jobs.blacklistRule,
-      detailsMissing: jobs.detailsMissing,
-      firstSeen: jobs.firstSeen,
-    })
+function readHistory(ctx: IngestContext, items: readonly Item[]) {
+  const { db, profile } = ctx;
+  const comparisons = new Set(items.map((item) => item.cmp));
+  // Old stored comparison keys can predate aliases or title normalization; fetch their text only on a match.
+  const exactKeys = db
+    .select({ key: jobs.key, company: jobs.company, title: jobs.title, location: jobs.location })
     .from(jobs)
+    .all()
+    .filter((row) =>
+      comparisons.has(comparisonKey(row.company, row.title, row.location, profile.dedupe.companyAliases)),
+    )
+    .map((row) => row.key);
+  const rows = db
+    .select({ ...getTableColumns(jobs), applied: jobApplied.key, deleted: jobDeleted.key })
+    .from(jobs)
+    .leftJoin(jobApplied, eq(jobApplied.key, jobs.key))
+    .leftJoin(jobDeleted, eq(jobDeleted.key, jobs.key))
     .where(
       or(
         inArray(
@@ -101,8 +112,18 @@ function readHistory(db: Db, items: readonly Item[]) {
           items.map((i) => i.card.url),
         ),
         inArray(
+          jobs.key,
+          items.map((i) => i.key),
+        ),
+        inArray(jobs.key, [...exactKeys, ...ctx.accepted.keys()]),
+        inArray(
           jobs.comparisonKey,
           items.map((i) => i.cmp),
+        ),
+        and(
+          gt(jobs.firstSeen, new Date(ctx.now() - profile.filter.maxAgeDays * day)),
+          isNull(jobs.blacklistRule),
+          isNull(jobDeleted.key),
         ),
       ),
     )
@@ -118,8 +139,12 @@ function readHistory(db: Db, items: readonly Item[]) {
     )
     .all();
   return {
+    byKey: new Map(rows.map((row) => [row.key, row])),
     byUrl: new Map(rows.map((row) => [row.url, row])),
-    byComparison: new Map(rows.map((row) => [row.comparisonKey, row])),
+    byComparison: new Map(
+      rows.map((row) => [comparisonKey(row.company, row.title, row.location, profile.dedupe.companyAliases), row]),
+    ),
+    rows,
     purged: new Set(purged.map((row) => row.key)),
   };
 }
@@ -147,6 +172,7 @@ export async function ingestSearch(ctx: IngestContext, cards: readonly Card[]) {
   const counts: SearchCounts = {
     read: cards.length,
     fresh: 0,
+    known: 0,
     tooOld: 0,
     outsideLocation: 0,
     lowTitle: 0,
@@ -171,13 +197,19 @@ export async function ingestSearch(ctx: IngestContext, cards: readonly Card[]) {
   const items: Item[] = [];
   const isKnown = createKnown(db, search.knownDays, ctx.now);
   for (const card of cards) {
-    if (ctx.seen.has(card.url)) continue;
+    if (ctx.seen.has(card.url)) {
+      counts.known++;
+      continue;
+    }
     ctx.seen.add(card.url);
-    if (cached.has(card.url) && isKnown(card.url)) continue;
+    if (cached.has(card.url) && isKnown(card.url)) {
+      counts.known++;
+      continue;
+    }
     items.push({
       card,
       key: postingKey(card.company, card.title),
-      cmp: comparisonKey(card.company, card.title, card.location),
+      cmp: comparisonKey(card.company, card.title, card.location, profile.dedupe.companyAliases),
       description: card.description?.trim() || undefined,
       descriptionHtml: card.descriptionHtml,
       missing: card.detailsMissing === true,
@@ -189,19 +221,22 @@ export async function ingestSearch(ctx: IngestContext, cards: readonly Card[]) {
 
   // 2. No-network filters. A posting that only a rule keeps out skips the description fetch but is still saved.
   const rules = readRules(db);
-  const history = readHistory(db, items);
+  const history = readHistory(ctx, items);
   const candidates: Item[] = [];
   const early: Item[] = [];
   const dropped: string[] = [];
   for (const item of items) {
     const { card } = item;
     const saved = [history.byUrl.get(card.url), history.byComparison.get(item.cmp)];
+    const pending = [...ctx.accepted.values()].find(({ row }) => row.comparisonKey === item.cmp);
+    const upgrading = pending && agencySites.has(pending.row.site) && !agencySites.has(card.site);
     const known =
-      saved.some(
-        (row) =>
-          row && row.blacklistRule === null && (!row.detailsMissing || (!item.description && !ctx.source?.describe)),
-      ) ||
-      ctx.claimed.has(item.cmp) ||
+      (!upgrading &&
+        saved.some(
+          (row) =>
+            row && row.blacklistRule === null && (!row.detailsMissing || (!item.description && !ctx.source?.describe)),
+        )) ||
+      (ctx.claimed.has(item.cmp) && !upgrading) ||
       history.purged.has(item.key) ||
       ctx.blocked.has(comparisonCompany(card.company));
     if (!known && saved.some((row) => row?.detailsMissing && row.blacklistRule === null)) {
@@ -223,7 +258,8 @@ export async function ingestSearch(ctx: IngestContext, cards: readonly Card[]) {
     if (known || tooOld || outside || lowTitle) {
       dropped.push(card.url);
       // Counted once, by the first reason that is about the posting itself.
-      if (!known) counts[tooOld ? 'tooOld' : outside ? 'outsideLocation' : 'lowTitle']++;
+      if (known) counts.known++;
+      else counts[tooOld ? 'tooOld' : outside ? 'outsideLocation' : 'lowTitle']++;
       continue;
     }
     const view = { ...card, key: item.key, work_mode: card.declaredMode ?? null, description: item.description };
@@ -267,6 +303,7 @@ export async function ingestSearch(ctx: IngestContext, cards: readonly Card[]) {
     } else eligible.push(item);
   }
   const committed = commit(ctx, eligible, dropped);
+  counts.known += committed.known;
   counts.excludedRequirement = Object.values(committed.requirements).reduce((sum, n) => sum + n, 0);
   return { ...committed, counts };
 }
@@ -276,7 +313,7 @@ function commit(ctx: IngestContext, items: readonly Item[], dropped: readonly st
   const { db, profile, scorer } = ctx;
   const nowMs = ctx.now();
   const rules = readRules(db);
-  const history = readHistory(db, items);
+  const history = readHistory(ctx, items);
   const selected: Selected[] = [];
   const inserts: Array<typeof jobs.$inferInsert> = [];
   const replaces: Array<{ key: string; row: typeof jobs.$inferInsert }> = [];
@@ -284,20 +321,49 @@ function commit(ctx: IngestContext, items: readonly Item[], dropped: readonly st
   const judged = [...dropped];
   const misses: Array<typeof nearMisses.$inferInsert> = [];
   let excluded = 0;
+  let known = 0;
   /** Stabile postings dropped for what they require, by reason (`laurea`, `sanitario`, `patente`, `altro`). */
   const requirements: Record<string, number> = {};
 
   for (const item of items) {
     const { card } = item;
+    if (history.purged.has(item.key) || ctx.blocked.has(comparisonCompany(card.company))) continue;
+    const sameRun = [...ctx.accepted.values()].filter(({ row }) => {
+      const current = history.byKey.get(row.key);
+      return current
+        ? current.blacklistRule === null && current.deleted === null
+        : ctx.dryRun || inserts.some((insert) => insert.key === row.key);
+    });
+    const similar = (row: typeof jobs.$inferSelect) =>
+      !row.detailsMissing &&
+      !item.missing &&
+      row.description !== null &&
+      item.description !== undefined &&
+      canCompareDescriptions(row, card, profile.dedupe.companyAliases) &&
+      descriptionSimilarity(row.description, item.description, profile.dedupe.minDescriptionChars) >=
+        profile.dedupe.descriptionSimilarity;
+    const pending = sameRun.find(({ row }) => row.comparisonKey === item.cmp || similar(row));
     const saved = [history.byUrl.get(card.url), history.byComparison.get(item.cmp)].filter((row) => row !== undefined);
-    if (ctx.claimed.has(item.cmp) || history.purged.has(item.key) || ctx.blocked.has(comparisonCompany(card.company)))
-      continue;
-    const existing = saved.find((row) => row.blacklistRule === null) ?? saved[0];
+    const textMatch = history.rows.find(
+      (row) =>
+        row.blacklistRule === null &&
+        row.deleted === null &&
+        row.firstSeen.getTime() > nowMs - profile.filter.maxAgeDays * day &&
+        similar(row),
+    );
+    const existing = saved.find((row) => row.blacklistRule === null) ?? textMatch ?? saved[0];
+    const previous = pending?.row ?? existing;
+    const upgrading =
+      pending !== undefined &&
+      agencySites.has(pending.row.site) &&
+      !agencySites.has(card.site) &&
+      pending.row.blacklistRule === null &&
+      !history.rows.some((row) => row.key === pending.row.key && row.applied !== null);
     const result = scorer.score({ ...card, description: item.description });
-    if (existing?.blacklistRule === null) {
-      if (existing.detailsMissing && !item.missing && item.description) {
+    if (previous?.blacklistRule === null && !upgrading) {
+      if (previous.detailsMissing && !item.missing && item.description && !pending) {
         repairs.push({
-          key: existing.key,
+          key: previous.key,
           row: {
             description: item.description,
             descriptionHtml: item.descriptionHtml ?? null,
@@ -312,7 +378,12 @@ function commit(ctx: IngestContext, items: readonly Item[], dropped: readonly st
         });
         ctx.claimed.add(item.cmp);
         judged.push(card.url);
-      } else if (!existing.detailsMissing) judged.push(card.url);
+      } else if (!previous.detailsMissing) judged.push(card.url);
+      known++;
+      continue;
+    }
+    if (ctx.claimed.has(item.cmp) && !upgrading) {
+      known++;
       continue;
     }
     const isSelected = scorer.isSelected(result);
@@ -352,11 +423,11 @@ function commit(ctx: IngestContext, items: readonly Item[], dropped: readonly st
       continue;
     }
     ctx.claimed.add(item.cmp);
-    if (excludedRow && existing) continue; // an excluded row already saved stays exactly as it is
+    if (excludedRow && previous) continue; // an excluded row already saved stays exactly as it is
     if (!excludedRow && !item.missing) judged.push(card.url);
-    const row: typeof jobs.$inferInsert = {
+    const row: typeof jobs.$inferSelect = {
       // The key of a row that is replaced never changes.
-      key: existing?.key ?? item.key,
+      key: previous?.key ?? item.key,
       comparisonKey: item.cmp,
       title: card.title,
       company: card.company,
@@ -374,17 +445,19 @@ function commit(ctx: IngestContext, items: readonly Item[], dropped: readonly st
       isRemote: result.workMode === 'remote',
       detailsMissing: item.missing,
       postedAt: card.postedAt ?? null,
-      firstSeen: existing?.firstSeen ?? new Date(nowMs),
+      firstSeen: previous?.firstSeen ?? new Date(nowMs),
       importedAt: null,
       blacklistRule: excludedRow ? rule.id : null,
     };
-    if (existing) replaces.push({ key: existing.key, row });
+    const pendingInsert = inserts.findIndex((insert) => insert.key === row.key);
+    if (pendingInsert !== -1) inserts[pendingInsert] = row;
+    else if (previous) replaces.push({ key: previous.key, row });
     else inserts.push(row);
     if (excludedRow) {
       excluded++;
       continue;
     }
-    selected.push({
+    const choice: Selected = {
       title: card.title,
       company: card.company,
       location: card.location,
@@ -398,7 +471,15 @@ function commit(ctx: IngestContext, items: readonly Item[], dropped: readonly st
       postedAt: card.postedAt ? card.postedAt.toISOString() : null,
       missing: item.missing,
       at: card.postedAt?.getTime() ?? nowMs,
-    });
+    };
+    if (pending) {
+      // Collection notifications and dry-run results already hold this reference.
+      Object.assign(pending.selected, choice);
+      pending.row = row;
+    } else {
+      selected.push(choice);
+      ctx.accepted.set(row.key, { row, selected: choice });
+    }
   }
 
   if (!ctx.dryRun) {
@@ -424,5 +505,5 @@ function commit(ctx: IngestContext, items: readonly Item[], dropped: readonly st
           .run();
     });
   }
-  return { selected, excluded, requirements };
+  return { selected, excluded, requirements, known };
 }
