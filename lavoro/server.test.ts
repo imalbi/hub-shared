@@ -4720,6 +4720,7 @@ void test('U4: private module schema walker marks all sensitive fields manual', 
     'private:lavoro.search.manpower.maxPages',
     'private:lavoro.search.workday.maxPages',
     'private:lavoro.search.synergie.maxPages',
+    'private:lavoro.search.altamira.maxPages',
     'private:lavoro.parere.profile',
   ]);
   const missing: string[] = [];
@@ -5508,4 +5509,165 @@ void test('CV openCvFolder sanitizes failed and rejected desktop commands', asyn
     assert.equal(response.statusCode, 500);
     assert.ok(!response.body.includes(folder));
   }
+});
+
+void test('the discovered module registers rss', async (t) => {
+  const profile = testProfile((p) => {
+    p.search.sites = ['rss'];
+    p.filter.allowedLocations = ['torino'];
+    Object.assign(p.search, {
+      rss: { feeds: [{ url: 'https://feeds.example.org/jobs', company: 'Example' }] },
+    });
+    Object.assign(p, { stable: { sites: ['rss'], titleWeights: { addetto: 2, frontend: 2 } } });
+  });
+  let calls = 0;
+  const fetchFake: typeof fetch = async (input) => {
+    calls++;
+    void input;
+    return new Response(
+      '<rss><channel><item><title>Frontend developer</title><link>https://jobs.example.org/1</link><location>Torino</location><description>TypeScript Docker</description></item></channel></rss>',
+    );
+  };
+  const app = buildServer({
+    dbPath: ':memory:',
+    moduleRoots: [root],
+    onlyModules: ['lavoro'],
+    deps: { run: createFakeDesktop({ notifications: [] }), fetch: fetchFake },
+    config: { ...emptyConfig, modules: { lavoro: profile } },
+  });
+  t.after(() => app.close());
+  const started = await app.inject({
+    method: 'POST',
+    url: '/trpc/lavoro.prova',
+    headers: { 'content-type': 'application/json' },
+    payload: '{}',
+  });
+  assert.equal(started.statusCode, 200);
+  let data: {
+    sources: string[];
+    collection: unknown;
+    last?: { kind: string; status: string };
+    dryRun: Array<{ title: string; site: string }> | null;
+  };
+  for (let turn = 0; ; turn++) {
+    data = (await app.inject('/trpc/lavoro.state')).json().result.data;
+    if (data.collection === null && data.last?.kind === 'prova') break;
+    assert.ok(turn < 600, 'the dry run did not finish');
+    await delay(5);
+  }
+  assert.equal(data.last?.status, 'done');
+  assert.deepEqual(data.sources, ['rss']);
+  assert.deepEqual(
+    data.dryRun?.map((row) => [row.title, row.site]),
+    [['Frontend developer', 'rss']],
+  );
+  assert.equal(calls, 1);
+});
+
+void test('the discovered module registers altamira', async (t) => {
+  const profile = testProfile((p) => {
+    p.search.sites = ['altamira'];
+    p.filter.allowedLocations = ['torino'];
+    Object.assign(p.search, {
+      altamira: { employers: [{ listUrl: 'https://board.example.org/', company: 'Example' }] },
+    });
+    Object.assign(p, { stable: { sites: ['altamira'], titleWeights: { addetto: 2, frontend: 2 } } });
+  });
+  let calls = 0;
+  const fetchFake: typeof fetch = async (input) => {
+    calls++;
+    void input;
+    return new Response(
+      requestUrl(input).includes('/annunci-lavoro/')
+        ? '<section class="job-detail"><div data-title="Testo"><div class="LABLE">Diploma richiesto</div></div></section>'
+        : '<table><tr><td data-title="Titolo">Titolo</td></tr><tr class="GRID_DAT_ROW"><td data-title="Titolo"><a href="/annunci-lavoro/1.htm">Addetto esempio</a></td><td data-title="Sedi">Torino</td></tr></table>',
+    );
+  };
+  const app = buildServer({
+    dbPath: ':memory:',
+    moduleRoots: [root],
+    onlyModules: ['lavoro'],
+    deps: { run: createFakeDesktop({ notifications: [] }), fetch: fetchFake },
+    config: { ...emptyConfig, modules: { lavoro: profile } },
+  });
+  t.after(() => app.close());
+  const started = await app.inject({
+    method: 'POST',
+    url: '/trpc/lavoro.prova',
+    headers: { 'content-type': 'application/json' },
+    payload: '{}',
+  });
+  assert.equal(started.statusCode, 200);
+  let data: {
+    sources: string[];
+    collection: unknown;
+    last?: { kind: string; status: string };
+    dryRun: Array<{ title: string; site: string }> | null;
+  };
+  for (let turn = 0; ; turn++) {
+    data = (await app.inject('/trpc/lavoro.state')).json().result.data;
+    if (data.collection === null && data.last?.kind === 'prova') break;
+    assert.ok(turn < 600, 'the dry run did not finish');
+    await delay(5);
+  }
+  assert.equal(data.last?.status, 'done');
+  assert.deepEqual(data.sources, ['altamira']);
+  assert.deepEqual(
+    data.dryRun?.map((row) => [row.title, row.site]),
+    [['Addetto esempio', 'altamira']],
+  );
+  assert.equal(calls, 2);
+});
+
+void test('the discovered module registers smat', async (t) => {
+  const profile = testProfile((p) => {
+    p.search.sites = ['smat'];
+    p.filter.allowedLocations = ['torino'];
+    Object.assign(p.search, {
+      smat: { baseUrl: 'https://water.example.org/jobs', company: 'Example' },
+    });
+    Object.assign(p, { stable: { sites: ['smat'], titleWeights: { addetto: 2, frontend: 2 } } });
+  });
+  let calls = 0;
+  const fetchFake: typeof fetch = async (input) => {
+    calls++;
+    void input;
+    return new Response(
+      '<div class="page-text"><table><tbody><tr><td><p>Addetto esempio</p><p>Sede di lavoro: Torino</p></td><td>30/12/2026</td><td><a href="/notice.pdf">AVVISO DI SELEZIONE</a></td><td>APERTA</td></tr></tbody></table></div>',
+    );
+  };
+  const app = buildServer({
+    dbPath: ':memory:',
+    moduleRoots: [root],
+    onlyModules: ['lavoro'],
+    deps: { run: createFakeDesktop({ notifications: [] }), fetch: fetchFake },
+    config: { ...emptyConfig, modules: { lavoro: profile } },
+  });
+  t.after(() => app.close());
+  const started = await app.inject({
+    method: 'POST',
+    url: '/trpc/lavoro.prova',
+    headers: { 'content-type': 'application/json' },
+    payload: '{}',
+  });
+  assert.equal(started.statusCode, 200);
+  let data: {
+    sources: string[];
+    collection: unknown;
+    last?: { kind: string; status: string };
+    dryRun: Array<{ title: string; site: string }> | null;
+  };
+  for (let turn = 0; ; turn++) {
+    data = (await app.inject('/trpc/lavoro.state')).json().result.data;
+    if (data.collection === null && data.last?.kind === 'prova') break;
+    assert.ok(turn < 600, 'the dry run did not finish');
+    await delay(5);
+  }
+  assert.equal(data.last?.status, 'done');
+  assert.deepEqual(data.sources, ['smat']);
+  assert.deepEqual(
+    data.dryRun?.map((row) => [row.title, row.site]),
+    [['Addetto esempio Sede di lavoro: Torino', 'smat']],
+  );
+  assert.equal(calls, 1);
 });

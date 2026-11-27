@@ -17,6 +17,9 @@ const sites = [
   'manpower',
   'workday',
   'synergie',
+  'rss',
+  'altamira',
+  'smat',
 ] as const;
 const siteLabels = {
   indeed: 'Indeed',
@@ -30,6 +33,9 @@ const siteLabels = {
   manpower: 'Manpower',
   workday: 'Workday',
   synergie: 'Synergie',
+  rss: 'RSS',
+  altamira: 'Altamira',
+  smat: 'Selezioni SMAT',
 };
 const site = z.enum(sites).meta({ optionLabels: siteLabels });
 const count = z.number().int().positive();
@@ -177,6 +183,49 @@ const iren = z
 const publicHostRegex = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/iu;
 const isValidEmployerHost = (value: string) => publicHostRegex.test(value) && isPublicHostname(value);
 
+const publicUrl = z
+  .url()
+  .refine((value) => {
+    if (!URL.canParse(value)) return true;
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      isValidEmployerHost(url.hostname) &&
+      !url.username &&
+      !url.password &&
+      !url.port &&
+      !url.hash
+    );
+  })
+  .meta({ manual: true, title: 'Indirizzo', description: 'Indirizzo https pubblico della fonte.' });
+const company = z.string().min(1).meta({ title: 'Azienda', description: 'Nome mostrato sugli annunci.' });
+const maxPages = count
+  .default(10)
+  .meta({ title: 'Pagine massime', description: 'Limite delle pagine da leggere.', unit: 'pagine' });
+const rss = z
+  .strictObject({
+    feeds: z
+      .array(z.strictObject({ url: publicUrl, company }))
+      .min(1)
+      .meta({ title: 'Feed', description: 'Feed RSS o Atom da leggere.' }),
+    maxItems: count
+      .default(500)
+      .meta({ title: 'Annunci massimi', description: 'Limite degli annunci per feed.', unit: 'annunci' }),
+  })
+  .meta({ title: 'RSS', description: 'Annunci pubblicati tramite RSS o Atom.' });
+const altamira = z
+  .strictObject({
+    employers: z
+      .array(z.strictObject({ listUrl: publicUrl, company }))
+      .min(1)
+      .meta({ title: 'Aziende', description: 'Elenchi Altamira da leggere.' }),
+    maxPages,
+  })
+  .meta({ title: 'Altamira', description: 'Annunci dei siti carriere Altamira.' });
+const smat = z
+  .strictObject({ baseUrl: publicUrl, company })
+  .meta({ title: 'Selezioni SMAT', description: 'Avvisi aperti nella pagina delle selezioni.' });
+
 const successfactors = z
   .strictObject({
     employers: z
@@ -191,6 +240,19 @@ const successfactors = z
             .string()
             .min(1)
             .meta({ title: 'Azienda', description: 'Nome mostrato sugli annunci di questo sito.' }),
+          mode: z
+            .enum(['html', 'unified'])
+            .default('html')
+            .meta({
+              title: 'Modalità',
+              description: 'Formato del sito carriere.',
+              optionLabels: { html: 'HTML', unified: 'API unificata' },
+            }),
+          locale: z
+            .string()
+            .regex(/^[a-z]{2}_[A-Z]{2}$/u)
+            .optional()
+            .meta({ title: 'Lingua', description: 'Codice lingua richiesto dalla API unificata.' }),
         }),
       )
       .min(1)
@@ -385,6 +447,9 @@ const search = z
     manpower: manpower.optional(),
     workday: workday.optional(),
     synergie: synergie.optional(),
+    rss: rss.optional(),
+    altamira: altamira.optional(),
+    smat: smat.optional(),
     queries: z
       .array(query)
       .min(1)
@@ -735,6 +800,14 @@ export const profileSchema = z
     }),
   })
   .superRefine((profile, ctx) => {
+    profile.search.successfactors?.employers.forEach((employer, index) => {
+      if (employer.mode === 'unified' && !employer.locale)
+        ctx.addIssue({
+          code: 'custom',
+          path: ['search', 'successfactors', 'employers', index, 'locale'],
+          message: 'required for unified mode',
+        });
+    });
     const enabled = new Set([...profile.search.sites, ...profile.search.queries.flatMap((query) => query.sites ?? [])]);
     if (enabled.has('indeed') && !profile.sources.indeed) {
       ctx.addIssue({ code: 'custom', path: ['sources', 'indeed'], message: 'required when indeed is enabled' });
@@ -748,6 +821,9 @@ export const profileSchema = z
       'manpower',
       'workday',
       'synergie',
+      'rss',
+      'altamira',
+      'smat',
     ] as const) {
       if (enabled.has(site) && !profile.search[site]) {
         ctx.addIssue({ code: 'custom', path: ['search', site], message: `required when ${site} is enabled` });

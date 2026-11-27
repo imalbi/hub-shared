@@ -25,3 +25,24 @@ Da fare in Oggi legge le risposte salvate: le mail degli ultimi `todoDays` giorn
 Il dettaglio della candidatura mostra l'ultimo file `colloquio-YYYY-MM-DD[-N].md` nella cartella della candidatura; Statistiche mostra l'ultimo `lacune-YYYY-MM-DD[-N].md`. La cartella di partenza è quella già impostata in `skills/paths.local.json`. Il file viene riletto all'apertura; Apri il file apre l'ultima preparazione sul PC. Non vengono modificati i file.
 
 Il formato riconosce titoli fino al terzo livello, paragrafi, elenchi semplici, grassetto, codice, link HTTP(S), separatori e righe `<sub>Fonte: ...</sub>`. Altri elementi restano testo. I percorsi risolti fuori da `candidature/` non vengono letti.
+
+## Fonti a elenco
+
+`search.sites` e `search.queries[].sites` accettano anche `rss`, `altamira` e `smat`. Abilitare una fonte richiede il relativo blocco in `search`; nessun datore o luogo viene aggiunto automaticamente.
+
+```json
+{
+  "rss": { "feeds": [{ "url": "https://feeds.example.org/jobs", "company": "Example" }], "maxItems": 500 },
+  "altamira": {
+    "employers": [{ "listUrl": "https://board.example.org/Example", "company": "Example" }],
+    "maxPages": 10
+  },
+  "smat": { "baseUrl": "https://water.example.org/jobs", "company": "Example" }
+}
+```
+
+RSS legge RSS 2.0 e Atom senza richieste ai dettagli. Altamira legge le liste HTML e i dettagli dei soli annunci nuovi; supporta la paginazione tramite link pubblici, segnala come incompleta quella tramite postback. SMAT esclude gli avvisi marcati come chiusi: conserva il testo della riga e il link pubblico del bando, sempre con dettagli incompleti finché i requisiti nel PDF non sono letti. Una riga con più profili rimane un bando unico. La sede resta sconosciuta se non è dichiarata dalla fonte.
+
+Per un datore SuccessFactors con API unificata, aggiungere `"mode": "unified", "locale": "it_IT"` alla sua voce in `search.successfactors.employers`. La modalità HTML rimane quella predefinita. L'API usa pagine da zero, conserva tutte le sedi dichiarate e non trasforma date ambigue in date di pubblicazione. Il titolo provvisorio `Not Applicable` resta incompleto anche quando la pagina contiene testo aziendale.
+
+I lettori limitano le risposte a 4 MiB, rispettano `Retry-After` e distanziano le richieste di almeno un secondo. Errori delle liste e limiti di paginazione impediscono di dichiarare completa la raccolta; le fonti sane conservano i propri risultati.

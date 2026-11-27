@@ -372,3 +372,44 @@ void test('dedupe defaults contain no aliases and reject unsafe thresholds or le
     { Acme: 'Beta' },
   );
 });
+
+void test('new source URLs reject credentials, private hosts, ports and non-HTTPS protocols', () => {
+  for (const url of [
+    'http://example.org/jobs',
+    'https://127.0.0.1/jobs',
+    'https://user:pass@example.org/jobs',
+    'https://example.org:444/jobs',
+    'https://service.local/jobs',
+  ]) {
+    // guard-private: allow Synthetic security test value
+    for (const [site, settings] of Object.entries({
+      rss: { feeds: [{ url, company: 'Example' }] },
+      altamira: { employers: [{ listUrl: url, company: 'Example' }] },
+      smat: { baseUrl: url, company: 'Example' },
+    })) {
+      assert.equal(
+        profileSchema.safeParse({ ...inventedProfile(), search: { ...inventedProfile().search, [site]: settings } })
+          .success,
+        false,
+        `${site}: ${url}`,
+      );
+    }
+  }
+});
+void test('SuccessFactors defaults to HTML and requires a validated explicit locale for unified mode', () => {
+  const base = inventedProfile();
+  const parse = (employer: object) => ({
+    ...base,
+    search: {
+      ...base.search,
+      successfactors: {
+        ...inventedSourceSettings.successfactors,
+        employers: [{ host: 'jobs.example.org', company: 'Example', ...employer }],
+      },
+    },
+  });
+  assert.equal(profileSchema.parse(parse({})).search.successfactors?.employers[0]?.mode, 'html');
+  assert.deepEqual(paths(parse({ mode: 'unified' })), ['search.successfactors.employers.0.locale']);
+  assert.deepEqual(paths(parse({ mode: 'unified', locale: '../bad' })), ['search.successfactors.employers.0.locale']);
+  assert.equal(profileSchema.safeParse(parse({ mode: 'unified', locale: 'it_IT' })).success, true);
+});

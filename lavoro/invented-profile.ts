@@ -65,4 +65,7 @@ export const inventedSourceSettings = {
   manpower: { city: 'exampleville', functions: ['ict'] },
   workday: { employers: [{ host: 'workday.example.org', tenant: 'example', site: 'Main', company: 'Example' }] },
   synergie: { regions: ['Example Region'] },
+  rss: { feeds: [{ url: 'https://feeds.example.org/jobs', company: 'Example' }] },
+  altamira: { employers: [{ listUrl: 'https://board.example.org/', company: 'Example' }] },
+  smat: { baseUrl: 'https://water.example.org/jobs', company: 'Example' },
 };

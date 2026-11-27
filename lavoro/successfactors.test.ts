@@ -4,6 +4,7 @@ import { parseHTML } from 'linkedom';
 import { detail, host, html, table, tiles, url } from './fake-successfactors.ts';
 import { silentLog, testProfile } from './harness.ts';
 import { createSuccessFactorsSource, readDetail, readPage } from './successfactors.ts';
+import { requestUrl } from './test-http.ts';
 import type { SearchInput, SourceContext } from './source.ts';
 
 const doc = (s: string) => parseHTML(`<html><body>${s}</body></html>`).document;
@@ -66,6 +67,13 @@ void test('detail cleans the description and parses datePosted', () => {
   assert.equal(result.descriptionHtml, '<p>Diploma richiesto</p>');
   assert.equal(result.postedAt?.toISOString(), '2026-11-01T00:00:00.000Z');
 });
+void test('detail keeps the role between empty description blocks', () => {
+  const result = readDetail(
+    doc('<div itemprop="description"></div>' + detail() + '<div itemprop="description"> </div>'),
+    doc(''),
+  );
+  assert.equal(result.description, 'Diploma richiesto');
+});
 void test('paging reaches total, maxPages stops it, and company comes from config', async () => {
   const run = async (maxPages: number) => {
     const seen: string[] = [];
@@ -114,4 +122,150 @@ void test('429 honors Retry-After and retries, without exposing the response bod
   assert.equal(calls, 2);
   assert.deepEqual(waits, [7, null]);
   assert.equal(ctx.now(), 7000);
+});
+
+function unified(ids: number[], total = ids.length) {
+  return JSON.stringify({
+    totalJobs: total,
+    jobSearchResult: ids.map((id) => ({
+      response: {
+        id: String(id),
+        unifiedStandardTitle: `Addetto esempio ${id}`,
+        unifiedUrlTitle: `example-${id}`,
+        jobLocationShort: ['Torino', 'Other place'],
+      },
+    })),
+  });
+}
+void test('explicit unified mode posts zero-based pages, retains all locations and skips known details', async () => {
+  const requests: Array<{ url: string; body: unknown }> = [];
+  const ctx = context(
+    async (request, init) => {
+      const body: unknown = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+      requests.push({ url: requestUrl(request), body });
+      return new Response(unified(requests.length === 1 ? [1, 2] : [3], 3));
+    },
+    { employers: [{ host, company: 'Configured employer', mode: 'unified', locale: 'it_IT' }] },
+    true,
+  );
+  const result = await createSuccessFactorsSource().search(input, ctx);
+  assert.equal(result.complete, true);
+  assert.equal(result.cards.length, 3);
+  assert.equal(result.cards[0]?.url, `https://${host}/job/example-1/1-it_IT/`);
+  assert.equal(result.cards[0]?.location, 'Torino; Other place');
+  assert.equal(result.cards[0]?.postedAt, undefined);
+  assert.deepEqual(
+    requests.map((request) => request.body),
+    [0, 1].map((pageNumber) => ({ keywords: '', locale: 'it_IT', location: 'Torino', pageNumber, sortBy: 'recent' })),
+  );
+  assert.ok(requests.every((request) => request.url.endsWith('/services/recruiting/v1/jobs')));
+  assert.ok(ctx.now() >= 1000);
+});
+void test('unified caps, repeated pages and later failure retain partial cards without claiming completeness', async () => {
+  for (const response of [unified([1], 3), JSON.stringify({ totalJobs: 3 }), 'private response']) {
+    let calls = 0;
+    const result = await createSuccessFactorsSource().search(
+      input,
+      context(
+        async () => new Response(++calls === 1 ? unified([1], 3) : response),
+        { employers: [{ host, company: 'Example', mode: 'unified', locale: 'it_IT' }] },
+        true,
+      ),
+    );
+    assert.equal(result.cards.length, 1);
+    assert.equal(result.complete, false);
+    assert.match(result.error?.message ?? '', /^successfactors: /u);
+    assert.ok(!result.error?.message.includes('private response'));
+  }
+  const capped = await createSuccessFactorsSource().search(
+    input,
+    context(
+      async () => new Response(unified([1], 3)),
+      { maxPages: 1, employers: [{ host, company: 'Example', mode: 'unified', locale: 'it_IT' }] },
+      true,
+    ),
+  );
+  assert.equal(capped.complete, false);
+});
+void test('unified employer failure does not change HTML employer behavior', async () => {
+  const result = await createSuccessFactorsSource().search(
+    input,
+    context(
+      async (request) =>
+        requestUrl(request).includes('/services/') ? new Response('private', { status: 500 }) : html(table(0, 1, [1])),
+      {
+        employers: [
+          { host, company: 'API employer', mode: 'unified', locale: 'it_IT' },
+          { host: 'other.example.org', company: 'HTML employer' },
+        ],
+      },
+      true,
+    ),
+  );
+  assert.equal(result.cards.length, 1);
+  assert.equal(result.cards[0]?.company, 'HTML employer');
+  assert.equal(result.complete, false);
+});
+
+void test('unified placeholder roles keep boilerplate text but stay incomplete', async () => {
+  const listing = unified([1]).replace('Addetto esempio 1', 'Not Applicable');
+  const result = await createSuccessFactorsSource().search(
+    input,
+    context(
+      async (request) =>
+        requestUrl(request).includes('/services/')
+          ? new Response(listing)
+          : html('<div itemprop="description">We are an equal opportunity employer.</div>'),
+      { employers: [{ host, company: 'Example', mode: 'unified', locale: 'it_IT' }] },
+    ),
+  );
+  assert.equal(result.cards.length, 1);
+  assert.match(result.cards[0]?.description ?? '', /equal opportunity/u);
+  assert.equal(result.cards[0]?.detailsMissing, true);
+});
+
+void test('duplicate unified ids within one page cannot claim a complete listing', async () => {
+  const result = await createSuccessFactorsSource().search(
+    input,
+    context(
+      async () => new Response(unified([1, 1], 2)),
+      { employers: [{ host, company: 'Example', mode: 'unified', locale: 'it_IT' }] },
+      true,
+    ),
+  );
+  assert.equal(result.complete, false);
+  assert.match(result.error?.message ?? '', /incomplete unified listing/u);
+});
+
+void test('unified zero totalJobs without jobSearchResult parses as complete empty listing', async () => {
+  const result = await createSuccessFactorsSource().search(
+    input,
+    context(
+      async () => new Response(JSON.stringify({ totalJobs: 0 })),
+      { employers: [{ host, company: 'Example', mode: 'unified', locale: 'it_IT' }] },
+      true,
+    ),
+  );
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.cards, []);
+  assert.equal(result.error, undefined);
+});
+
+void test('unified listing POST and fresh detail GET share the 1000 ms pacing clock', async () => {
+  const times: number[] = [];
+  const ctx = context(
+    async (request) => {
+      times.push(ctx.now());
+      return requestUrl(request).includes('/services/')
+        ? new Response(unified([1]))
+        : html('<div itemprop="description"><p>Ruolo tecnico</p></div>');
+    },
+    { employers: [{ host, company: 'Example', mode: 'unified', locale: 'it_IT' }] },
+    false,
+  );
+  const result = await createSuccessFactorsSource().search(input, ctx);
+  assert.equal(result.complete, true);
+  assert.equal(result.cards.length, 1);
+  assert.equal(times.length, 2);
+  assert.ok((times[1] ?? 0) - (times[0] ?? 0) >= 1000);
 });

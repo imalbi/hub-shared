@@ -20,6 +20,9 @@ import { assertPublicTarget, fetchAndParsePosting } from './import-read.ts';
 import { createIndeedSource } from './indeed.ts';
 import { createInpaSource } from './inpa.ts';
 import { createIrenSource } from './iren.ts';
+import { createRssSource } from './rss.ts';
+import { createAltamiraSource } from './altamira.ts';
+import { createSmatSource } from './smat.ts';
 import { createSuccessFactorsSource } from './successfactors.ts';
 import { createOracleSource } from './oracle.ts';
 import { createAvatureSource } from './avature.ts';
@@ -2800,6 +2803,9 @@ export default createLavoroModule({
     createInpaSource(),
     createIrenSource(),
     createSuccessFactorsSource(),
+    createRssSource(),
+    createAltamiraSource(),
+    createSmatSource(),
     createOracleSource(),
     createAvatureSource(),
     createManpowerSource(),

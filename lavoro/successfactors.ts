@@ -1,4 +1,6 @@
 import { parseHTML } from 'linkedom';
+import { z } from '../../apps/server/src/core/module.ts';
+import { sourceRequest } from './source-request.ts';
 import { fetchBounded, readBoundedText } from './bounded-fetch.ts';
 import { cleanHtml } from './clean-html.ts';
 import { desktopHeaders } from './desktop-headers.ts';
@@ -47,11 +49,42 @@ export function readPage(document: Document, host: string): { items: Item[]; tot
   return { items, total, pageSize: end - start + 1 };
 }
 
+const unifiedPage = z.object({
+  totalJobs: z.number().int().nonnegative(),
+  jobSearchResult: z
+    .array(
+      z.object({
+        response: z.object({
+          id: z.union([z.string().regex(/^\d+$/u), z.number().int().nonnegative()]).transform(String),
+          unifiedStandardTitle: z.string().min(1),
+          unifiedUrlTitle: z.string().min(1),
+          jobLocationShort: z.array(z.string()),
+        }),
+      }),
+    )
+    .optional(),
+});
+export function readUnified(
+  value: unknown,
+  host: string,
+  locale: string,
+): { items: Item[]; total: number; pageSize: number } {
+  const parsed = unifiedPage.safeParse(value);
+  if (!parsed.success || !/^[a-z]{2}_[A-Z]{2}$/u.test(locale)) throw fail('invalid unified listing');
+  const items = (parsed.data.jobSearchResult ?? []).map(({ response: item }) => ({
+    id: item.id,
+    title: item.unifiedStandardTitle,
+    location: item.jobLocationShort.join('; '),
+    url: `https://${host}/job/${encodeURIComponent(item.unifiedUrlTitle)}/${item.id}-${locale}/`,
+  }));
+  return { items, total: parsed.data.totalJobs, pageSize: items.length };
+}
+
 export function readDetail(
   document: Document,
   cleaner: Document,
 ): Pick<Card, 'description' | 'descriptionHtml' | 'postedAt'> {
-  const raw = document.querySelector('[itemprop="description"]')?.innerHTML ?? '';
+  const raw = [...document.querySelectorAll('[itemprop="description"]')].map((element) => element.innerHTML).join('');
   const cleaned = cleanHtml(cleaner, raw);
   const date = document.querySelector('[itemprop="datePosted"]');
   const value = date?.getAttribute('content') ?? date?.getAttribute('datetime') ?? date?.textContent ?? '';
@@ -67,6 +100,7 @@ export function createSuccessFactorsSource({ requestTimeoutMs = 20_000 }: { requ
   async function search(_input: SearchInput, context: SourceContext): Promise<SearchResult> {
     const settings = context.limits.successfactors;
     if (!settings) throw new Error('search.successfactors is required');
+    const request = sourceRequest(SITE, context, requestTimeoutMs);
     let last = Number.NEGATIVE_INFINITY;
     async function get(url: string): Promise<Document> {
       for (let attempt = 0; ; attempt++) {
@@ -117,20 +151,57 @@ export function createSuccessFactorsSource({ requestTimeoutMs = 20_000 }: { requ
     for (const employer of settings.employers) {
       try {
         const found: Item[] = [];
-        for (const place of settings.places) {
-          let start = 0;
-          let done = false;
-          for (let page = 0; page < settings.maxPages; page++) {
-            const params = new URLSearchParams({ q: '', locationsearch: place, startrow: String(start) });
-            const result = readPage(await get(`https://${employer.host}/search/?${params}`), employer.host);
-            found.push(...result.items);
-            start += result.pageSize;
-            if (!result.pageSize || start >= result.total) {
-              done = true;
-              break;
+        try {
+          for (const place of settings.places) {
+            let start = 0;
+            let received = 0;
+            const ids = new Set<string>();
+            let done = false;
+            for (let page = 0; page < settings.maxPages; page++) {
+              const params = new URLSearchParams({ q: '', locationsearch: place, startrow: String(start) });
+              const result =
+                employer.mode === 'unified'
+                  ? readUnified(
+                      JSON.parse(
+                        await request(`https://${employer.host}/services/recruiting/v1/jobs`, {
+                          method: 'POST',
+                          headers: { 'content-type': 'application/json' },
+                          body: JSON.stringify({
+                            keywords: '',
+                            locale: employer.locale,
+                            location: place,
+                            pageNumber: page,
+                            sortBy: 'recent',
+                          }),
+                        }),
+                      ),
+                      employer.host,
+                      employer.locale ?? '',
+                    )
+                  : readPage(await get(`https://${employer.host}/search/?${params}`), employer.host);
+              if (employer.mode === 'unified') {
+                received += result.items.length;
+                if (!result.items.length && received < result.total) throw fail('incomplete unified listing');
+                for (const item of result.items) {
+                  if (ids.has(item.id)) throw fail('incomplete unified listing');
+                  ids.add(item.id);
+                }
+              }
+              found.push(...result.items);
+              start += result.pageSize;
+              if (!result.pageSize || start >= result.total) {
+                done = true;
+                break;
+              }
             }
+            if (!done) capped = true;
           }
-          if (!done) capped = true;
+        } catch (error) {
+          if (context.signal.aborted) throw error;
+          const current =
+            error instanceof Error && error.message.startsWith(`${SITE}: `) ? error : fail('invalid listing');
+          firstError ??= current;
+          context.log.warn(current.message);
         }
         let fresh = 0;
         let failedDetails = 0;
@@ -150,9 +221,14 @@ export function createSuccessFactorsSource({ requestTimeoutMs = 20_000 }: { requ
           }
           fresh++;
           try {
-            const detail = readDetail(await get(card.url), cleaner);
-            if (!detail.description) failedDetails++;
-            cards.push({ ...card, ...detail, ...(detail.description ? {} : { detailsMissing: true }) });
+            const detail = readDetail(
+              employer.mode === 'unified' ? parseHTML(await request(card.url)).document : await get(card.url),
+              cleaner,
+            );
+            const missing =
+              !detail.description || (employer.mode === 'unified' && /^not applicable$/iu.test(item.title.trim()));
+            if (missing) failedDetails++;
+            cards.push({ ...card, ...detail, ...(missing ? { detailsMissing: true } : {}) });
           } catch (error) {
             if (context.signal.aborted) throw error;
             failedDetails++;

@@ -1,0 +1,4 @@
+export const feed = { url: 'https://feeds.example.org/jobs', company: 'Example' };
+export const rss = (id = 1, date = 'Sun, 01 Nov 2026 00:00:00 GMT') =>
+  `<?xml version="1.0"?><rss version="2.0"><channel><title>Offerte</title><item><title><![CDATA[Frontend developer]]></title><link>https://jobs.example.org/role/${id}</link><location>Exampleville</location><pubDate>${date}</pubDate><description><![CDATA[<p>TypeScript e Docker</p><script>secret()</script>]]></description></item></channel></rss>`;
+export const atom = `<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>Frontend developer</title><link rel="self" href="https://feeds.example.org/entry/2"/><link rel="alternate" href="https://jobs.example.org/role/2"/><updated>2026-11-01T00:00:00Z</updated><summary type="html">&lt;p&gt;TypeScript e Docker&lt;/p&gt;</summary></entry></feed>`;
