@@ -175,6 +175,7 @@ export type JobRow = {
   workMode: 'remote' | 'hybrid' | 'onsite' | null;
   isRemote: boolean;
   detailsMissing: boolean;
+  hasCv: boolean;
   postedAt: number | null;
   firstSeen: number;
   importedAt: number | null;
@@ -400,6 +401,39 @@ async function candidaturaFolder(skillsDir: string): Promise<string> {
   const found = await stat(folder).catch(() => null);
   if (!found?.isDirectory()) throw refuse('La cartella indicata in `skills/paths.local.json` non esiste.');
   return folder;
+}
+
+async function cvDirectory(root: string, directory: string): Promise<string | null> {
+  try {
+    const dir = await realpath(join(root, directory));
+    const rel = relative(root, dir);
+    if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
+    if (!(await stat(dir)).isDirectory()) return null;
+    for (const name of await readdir(dir)) {
+      if (!name.toLowerCase().endsWith('.pdf')) continue;
+      const file = await realpath(join(dir, name)).catch(() => null);
+      if (!file) continue;
+      const relFile = relative(root, file);
+      if (!relFile || relFile === '..' || relFile.startsWith(`..${sep}`) || isAbsolute(relFile)) continue;
+      if ((await stat(file)).isFile()) return dir;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+async function cvDirectories(skillsDir: string): Promise<Set<string>> {
+  const directories = new Set<string>();
+  try {
+    const root = await realpath(join(await candidaturaFolder(skillsDir), 'candidature'));
+    for (const name of await readdir(root)) {
+      if (await cvDirectory(root, name)) directories.add(name);
+    }
+  } catch {
+    return directories;
+  }
+  return directories;
 }
 
 async function noteFile(skillsDir: string, kind: 'colloquio' | 'lacune', directory = '') {
@@ -702,7 +736,7 @@ export function createLavoroModule({
         return true;
       }
 
-      function list(forAgent = false): { jobs: JobRow[]; rules: RuleRow[] } {
+      function list(forAgent = false, cvDirs: ReadonlySet<string> = new Set()): { jobs: JobRow[]; rules: RuleRow[] } {
         ready();
         const joined = db
           .select({ job: jobs, saved: opinions, bando: bandoTexts })
@@ -821,6 +855,7 @@ export function createLavoroModule({
         );
         const mappedJobs: JobRow[] = allJobs.map((j) => ({
           ...j,
+          hasCv: cvDirs.has(noteDirectory(j.company, j.title)),
           postedAt: j.postedAt ? j.postedAt.getTime() : null,
           firstSeen: j.firstSeen.getTime(),
           importedAt: j.importedAt ? j.importedAt.getTime() : null,
@@ -849,8 +884,8 @@ export function createLavoroModule({
       const postingTextLimit = 20_000;
 
       /** What an agent reads of one posting: the row, the text cut, the full opinion, linked mail by subject and date. */
-      function posting(identifier: string, forAgent = false) {
-        const { jobs: rows, rules } = list(forAgent);
+      async function posting(identifier: string, forAgent = false) {
+        const { jobs: rows, rules } = list(forAgent, await cvDirectories(skillsDir));
         const row = rows.find((candidate) => candidate.key === identifier || postingId(candidate.key) === identifier);
         if (!row) throw new TRPCError({ code: 'NOT_FOUND', message: 'Offerta non trovata' });
         const key = row.key;
@@ -1023,6 +1058,28 @@ export function createLavoroModule({
             const note = await noteFile(skillsDir, 'lacune');
             return note && { file: note.file, date: note.date, blocks: note.blocks };
           }),
+          openCvFolder: loopbackProcedure
+            .meta({ label: 'Apri cartella CV', description: 'Open the posting CV folder in the PC file manager.' })
+            .input(z.object({ key: z.string().min(1) }))
+            .mutation(async ({ input }) => {
+              const job = db.select().from(jobs).where(eq(jobs.key, input.key)).get();
+              let dir: string | null = null;
+              if (job) {
+                try {
+                  const root = await realpath(join(await candidaturaFolder(skillsDir), 'candidature'));
+                  dir = await cvDirectory(root, noteDirectory(job.company, job.title));
+                } catch {
+                  dir = null;
+                }
+              }
+              if (!dir) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cartella CV non trovata' });
+              try {
+                const { code } = await run('xdg-open', [dir]);
+                if (code !== 0) throw new Error('Open failed');
+              } catch {
+                throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Impossibile aprire la cartella CV' });
+              }
+            }),
           openPreparation: loopbackProcedure
             .meta({ label: 'Apri preparazione', description: 'Open the latest interview preparation file on the PC' })
             .input(z.object({ key: z.string() }))
@@ -1099,7 +1156,9 @@ export function createLavoroModule({
             .mutation(() => ({ started: startPareri() })),
           state: agentOrLoopbackProcedure.query(readState),
           onState: agentOrLoopbackProcedure.subscription(({ signal }) => live.subscribe(signal)),
-          list: agentOrLoopbackProcedure.query(({ ctx }) => list(ctx.client.kind === 'agent')),
+          list: agentOrLoopbackProcedure.query(async ({ ctx }) =>
+            list(ctx.client.kind === 'agent', await cvDirectories(skillsDir)),
+          ),
           summary: agentOrLoopbackProcedure.query(() => {
             const { jobs: rows, rules } = list();
             const last = db

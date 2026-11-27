@@ -27,6 +27,7 @@ const sampleJob: JobRow = {
   workMode: 'remote',
   isRemote: true,
   detailsMissing: false,
+  hasCv: false,
   postedAt: 1000,
   firstSeen: 1000,
   importedAt: null,

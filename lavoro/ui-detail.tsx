@@ -56,6 +56,7 @@ export type DetailDialogProps = {
   onCustomRule?: (posting: JobRow) => void;
   onIncludeAgain?: (key: string) => Promise<void>;
   onOpenEdit?: (job: JobRow) => void;
+  onOpenCvFolder: (key: string) => Promise<void>;
   onPrepareCandidatura?: (key: string) => Promise<void>;
   onCopyCommand?: (key: string) => Promise<void>;
   onRefetchDescription?: (key: string) => Promise<void>;
@@ -82,6 +83,7 @@ export function DetailDialog({
   onCustomRule,
   onIncludeAgain,
   onOpenEdit,
+  onOpenCvFolder,
   onPrepareCandidatura,
   onCopyCommand,
   onRefetchDescription,
@@ -124,6 +126,8 @@ export function DetailDialog({
     const isApp = Boolean(job.application);
     const left: FooterAction[] = [];
     const right: FooterAction[] = [];
+    if (job.hasCv)
+      left.push({ id: 'cv-folder', label: copy.actions.open_cv_folder, onClick: () => void onOpenCvFolder(job.key) });
     if (onOpenEdit) left.push({ id: 'edit', label: copy.detail.edit, onClick: () => onOpenEdit(job) });
     if (onExcludeCompany) {
       left.push({

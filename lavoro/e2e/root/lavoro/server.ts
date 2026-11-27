@@ -92,6 +92,10 @@ function held(source: ReturnType<typeof createFakeSource>): ReturnType<typeof cr
 const fixtureRoot = join(RUN_TMP, 'lavoro-notes');
 const fixtureDir = join(fixtureRoot, 'candidature', 'next-wave_principal-engineer');
 mkdirSync(fixtureDir, { recursive: true });
+const reviewCvDir = join(fixtureRoot, 'candidature', 'acme-corp_frontend-developer-react');
+mkdirSync(reviewCvDir, { recursive: true });
+writeFileSync(join(reviewCvDir, 'CV_Test.pdf'), '%PDF-1.4\nSynthetic CV fixture');
+writeFileSync(join(fixtureDir, 'CV_Test.pdf'), '%PDF-1.4\nSynthetic CV fixture');
 mkdirSync(join(RUN_TMP, 'candidatura'), { recursive: true });
 writeFileSync(join(RUN_TMP, 'candidatura', 'SKILL.md'), '# Synthetic candidatura skill\n');
 writeFileSync(join(RUN_TMP, 'paths.local.json'), JSON.stringify({ folder: fixtureRoot }));
@@ -416,6 +420,13 @@ export default defineModule({
         })
         .run();
     }
-    return baseModule.create(deps);
+    return baseModule.create({
+      ...deps,
+      run: (bin, args, options) => {
+        if (bin === 'xdg-open' && args.length === 1 && [fixtureDir, reviewCvDir].includes(args[0] ?? ''))
+          return Promise.resolve({ code: 0, stdout: '', stderr: '' });
+        return deps.run(bin, args, options);
+      },
+    });
   },
 });

@@ -1,3 +1,4 @@
+import { CvFolderButton } from './ui-card-row.tsx';
 import { TabBarRow } from '../../apps/web/src/shell/header-slot.tsx';
 import { SurfaceScroller } from '../../apps/web/src/shell/page-surface.tsx';
 import * as React from 'react';
@@ -86,6 +87,7 @@ export function CandidaturePage({
   jobs,
   now,
   onOpenDetail,
+  onOpenCvFolder,
   mailCheck,
   onChanged,
   loaded = true,
@@ -93,6 +95,7 @@ export function CandidaturePage({
   jobs: JobRow[];
   now: number;
   onOpenDetail: (key: string) => void;
+  onOpenCvFolder: (key: string) => Promise<void>;
   mailCheck: MailCheckState | null;
   onChanged: () => void;
   loaded?: boolean;
@@ -378,6 +381,7 @@ export function CandidaturePage({
                     <div className="flex flex-col gap-xs">
                       <div className="flex items-center justify-between text-caption text-muted-foreground">
                         <div className="flex items-center gap-xs">
+                          {job.hasCv && <CvFolderButton onOpen={() => void onOpenCvFolder(job.key)} />}
                           <Badge size="sm" tone={tone}>
                             {copy.candidature.status[effStatus]}
                           </Badge>

@@ -31,6 +31,7 @@ function makeJob(
     workMode: 'hybrid',
     isRemote: false,
     detailsMissing: false,
+    hasCv: false,
     postedAt: null,
     firstSeen: now - 3_600_000,
     importedAt: null,

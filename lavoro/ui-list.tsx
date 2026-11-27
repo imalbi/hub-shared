@@ -34,6 +34,7 @@ export type PostingsListProps = {
   openGroups: ReadonlySet<PostingGroupId>;
   onToggleGroup: (id: PostingGroupId) => void;
   onOpenDetail: (key: string) => void;
+  onOpenCvFolder: (key: string) => Promise<void>;
   onSetFlag: (
     keys: string[],
     flag: 'archived' | 'deleted' | 'applied',
@@ -69,6 +70,7 @@ export function PostingsList({
   openGroups,
   onToggleGroup,
   onOpenDetail,
+  onOpenCvFolder,
   onSetFlag,
   onPurge,
   onIncludeAgain,
@@ -108,6 +110,7 @@ export function PostingsList({
                 isGlobe={isGlobe}
                 highlightTermsList={highlightTermsList}
                 onOpenDetail={onOpenDetail}
+                onOpenCvFolder={onOpenCvFolder}
                 onSetFlag={onSetFlag}
                 onPurge={onPurge}
                 onIncludeAgain={onIncludeAgain}
@@ -130,6 +133,7 @@ export function PostingsList({
                 isGlobe={isGlobe}
                 highlightTermsList={highlightTermsList}
                 onOpenDetail={onOpenDetail}
+                onOpenCvFolder={onOpenCvFolder}
                 onSetFlag={onSetFlag}
                 onPurge={onPurge}
                 onIncludeAgain={onIncludeAgain}

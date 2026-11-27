@@ -71,6 +71,7 @@ function makeJobRow(overrides: Pick<JobRow, 'key' | 'company' | 'title'> & Parti
     workMode: null,
     isRemote: false,
     detailsMissing: false,
+    hasCv: false,
     postedAt: null,
     firstSeen: 0,
     importedAt: null,
@@ -1849,6 +1850,7 @@ void test('lavoro router metadata: every mutation carries an Italian label and E
     'lavoro.links.remove',
     'lavoro.mailCheck.run',
     'lavoro.openCandidatura',
+    'lavoro.openCvFolder',
     'lavoro.openPreparation',
     'lavoro.pareriMancanti',
     'lavoro.posting',
@@ -4120,6 +4122,7 @@ async function candidaturaSetup(
   folderExists = true,
   mcpClient: 'claude' | 'codex' = 'claude',
   profile?: unknown,
+  runResult: 0 | 1 | 'throw' = 0,
 ) {
   const dir = await mkdtemp(join(tmpdir(), 'hub-skills-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
@@ -4135,7 +4138,8 @@ async function candidaturaSetup(
     mcpClient,
     run: async (bin, args) => {
       calls.push([bin, ...args]);
-      return { stdout: '', stderr: '', code: 0 };
+      if (runResult === 'throw') throw new Error(folder);
+      return { stdout: '', stderr: '', code: runResult };
     },
   });
   await serving.post('raccogli');
@@ -5138,6 +5142,7 @@ void test('U9: agents are refused on edit, importApplications, setApplication no
     'lavoro.links.remove',
     'lavoro.mailCheck.run',
     'lavoro.openCandidatura',
+    'lavoro.openCvFolder',
     'lavoro.openPreparation',
     'lavoro.pareriMancanti',
     'lavoro.posting',
@@ -5417,4 +5422,90 @@ void test('tracked pareri report provider errors and can abort their retry wait 
   await post('pareriMancanti');
   await fake.drain();
   assert.equal((await app.inject('/trpc/jobs.list')).json().result.data[0].status, 'failed');
+});
+
+void test('CV list tracks PDFs and openCvFolder opens only the confined directory', async (t) => {
+  const { app, post, calls, folder, key } = await candidaturaSetup(t, '{ "folder": "FOLDER" }');
+  const rows = async (): Promise<Array<{ key: string; hasCv: boolean }>> =>
+    (await app.inject('/trpc/lavoro.list')).json().result.data.jobs;
+  assert.ok((await rows()).every((row) => !row.hasCv));
+  const dir = join(folder, 'candidature', 'company-1_frontend-developer-1');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'notes.txt'), 'Not a PDF');
+  await mkdir(join(dir, 'directory.pdf'));
+  assert.equal((await post('openCvFolder', { key })).statusCode, 404);
+  await writeFile(join(dir, 'CV_Test.PDF'), '%PDF-1.4');
+  assert.equal((await rows()).find((row) => row.key === key)?.hasCv, true);
+  assert.ok((await rows()).filter((row) => row.key !== key).every((row) => !row.hasCv));
+  assert.equal((await post('openCvFolder', { key })).statusCode, 200);
+  assert.deepEqual(
+    calls.filter(([bin]) => bin === 'xdg-open'),
+    [['xdg-open', dir]],
+  );
+  assert.equal((await post('openCvFolder', { key: 'unknown' })).statusCode, 404);
+  assert.equal((await post('openCvFolder', { key: '' })).statusCode, 400);
+  const { phone, agent, as } = await actors(t, { app });
+  for (const token of [phone]) {
+    const res = await as(token, { method: 'POST', url: '/trpc/lavoro.openCvFolder', payload: { key } });
+    assert.equal(res.statusCode, 403);
+  }
+  const denied = await mcpCallTool(app, agent, 'lavoro.openCvFolder', { key });
+  assert.equal(denied.isError, true);
+  assert.equal(calls.filter(([bin]) => bin === 'xdg-open').length, 1);
+});
+
+void test('CV missing paths fail closed without exposing paths', async (t) => {
+  const { app, post, key, folder } = await candidaturaSetup(t, null);
+  const res = await app.inject('/trpc/lavoro.list');
+  assert.ok(res.json().result.data.jobs.every((row: { hasCv: boolean }) => !row.hasCv));
+  const opened = await post('openCvFolder', { key });
+  assert.equal(opened.statusCode, 404);
+  assert.ok(!opened.body.includes(folder));
+});
+
+void test('CV refuses escaping PDF and directory symlinks, even when their PDF points back inside', async (t) => {
+  const { app, post, calls, folder, key } = await candidaturaSetup(t, '{ "folder": "FOLDER" }');
+  const root = join(folder, 'candidature');
+  const dir = join(root, 'company-1_frontend-developer-1');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(folder, 'outside.pdf'), '%PDF-1.4');
+  await symlink(join(folder, 'outside.pdf'), join(dir, 'escape.pdf'));
+  const absent = async () => {
+    const response = await post('openCvFolder', { key });
+    assert.equal(response.statusCode, 404);
+    assert.ok(!response.body.includes(folder));
+    const rows: Array<{ key: string; hasCv: boolean }> = (await app.inject('/trpc/lavoro.list')).json().result.data
+      .jobs;
+    assert.equal(rows.find((row) => row.key === key)?.hasCv, false);
+  };
+  await absent();
+  await rm(dir, { recursive: true });
+  const outside = join(folder, 'outside');
+  await mkdir(outside);
+  await writeFile(join(root, 'safe.pdf'), '%PDF-1.4');
+  await symlink(join(root, 'safe.pdf'), join(outside, 'CV.pdf'));
+  await symlink(outside, dir);
+  await absent();
+  assert.equal(calls.filter(([bin]) => bin === 'xdg-open').length, 0);
+});
+
+void test('CV openCvFolder sanitizes failed and rejected desktop commands', async (t) => {
+  for (const result of [1, 'throw']) {
+    // The two values are validated here instead of widening candidaturaSetup's command result.
+    if (result !== 1 && result !== 'throw') throw new Error('Invalid fixture');
+    const { post, folder, key } = await candidaturaSetup(
+      t,
+      '{ "folder": "FOLDER" }',
+      true,
+      'claude',
+      undefined,
+      result,
+    );
+    const dir = join(folder, 'candidature', 'company-1_frontend-developer-1');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'CV.pdf'), '%PDF-1.4');
+    const response = await post('openCvFolder', { key });
+    assert.equal(response.statusCode, 500);
+    assert.ok(!response.body.includes(folder));
+  }
 });

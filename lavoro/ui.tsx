@@ -473,6 +473,14 @@ export function RicercaZonePage() {
     }, 6000);
   }, []);
 
+  async function handleOpenCvFolder(key: string) {
+    try {
+      await client.openCvFolder.mutate({ key });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : copy.actions.cv_error);
+    }
+  }
+
   const [purgeKeys, setPurgeKeys] = React.useState<string[]>([]);
   const purgeJobsList = React.useMemo(() => {
     if (!data || !purgeKeys.length) return [];
@@ -929,6 +937,7 @@ export function RicercaZonePage() {
                     isGlobe={isGlobe}
                     highlightTermsList={highlightTermsList}
                     onOpenDetail={openDetail}
+                    onOpenCvFolder={handleOpenCvFolder}
                     onSetFlag={handleSetFlag}
                     onPurge={(keys) => setPurgeKeys(keys)}
                     onIncludeAgain={handleIncludeAgain}
@@ -970,6 +979,7 @@ export function RicercaZonePage() {
                 jobs={allJobs}
                 now={now}
                 onOpenDetail={openDetail}
+                onOpenCvFolder={handleOpenCvFolder}
                 mailCheck={lavoroState?.status === 'ready' ? lavoroState.mailCheck : null}
                 onChanged={() => void fetchData()}
                 loaded={data !== null}
@@ -1037,6 +1047,7 @@ export function RicercaZonePage() {
         onCustomRule={handleCustomRule}
         onIncludeAgain={handleIncludeAgain}
         onOpenEdit={(job) => setEditingJob(job)}
+        onOpenCvFolder={handleOpenCvFolder}
         onPrepareCandidatura={async (key) => {
           try {
             await client.openCandidatura.mutate({ key });

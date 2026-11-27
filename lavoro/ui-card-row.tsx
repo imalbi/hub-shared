@@ -3,6 +3,7 @@ import {
   Archive as ArchiveIcon,
   ArrowCounterClockwise as ArrowCounterClockwiseIcon,
   ArrowSquareOutIcon,
+  FilePdfIcon,
   Check as CheckIcon,
   Trash as TrashIcon,
 } from '@phosphor-icons/react';
@@ -50,6 +51,24 @@ export function OpinionBadge({
   return <>{opinion.outdated ? <Tooltip content={copy.pareri.outdated}>{badge}</Tooltip> : badge}</>;
 }
 
+export function CvFolderButton({ onOpen }: { onOpen: () => void }) {
+  return (
+    <Tooltip content={copy.actions.cv_ready}>
+      <button
+        type="button"
+        aria-label={copy.actions.cv_ready}
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen();
+        }}
+        className="shrink-0 cursor-pointer rounded-full p-2xs text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        <FilePdfIcon weight="thin" className="size-icon-sm" />
+      </button>
+    </Tooltip>
+  );
+}
+
 export type PostingItemProps = {
   job: JobRow;
   viewOpts: ViewOptions;
@@ -59,6 +78,7 @@ export type PostingItemProps = {
   isGlobe: boolean;
   highlightTermsList: string[];
   onOpenDetail: (key: string) => void;
+  onOpenCvFolder: (key: string) => Promise<void>;
   onSetFlag: (
     keys: string[],
     flag: 'archived' | 'deleted' | 'applied',
@@ -79,6 +99,7 @@ export function PostingCard({
   isGlobe,
   highlightTermsList,
   onOpenDetail,
+  onOpenCvFolder,
   onSetFlag,
   onPurge,
   onIncludeAgain,
@@ -108,6 +129,7 @@ export function PostingCard({
             )}
           </div>
           <div className="flex items-center gap-xs">
+            {job.hasCv && <CvFolderButton onOpen={() => void onOpenCvFolder(job.key)} />}
             {viewOpts.showScore && <ScoreBadge score={job.total} />}
             {job.opinion && <OpinionBadge opinion={job.opinion} />}
             {jobSegment === 'review' && (
@@ -346,6 +368,7 @@ export function PostingRow({
   isGlobe,
   highlightTermsList,
   onOpenDetail,
+  onOpenCvFolder,
   onSetFlag,
   onPurge,
   onIncludeAgain,
@@ -368,6 +391,7 @@ export function PostingRow({
             <h4 className="truncate text-label font-medium text-foreground group-hover:text-primary">
               <HighlightText text={formatJobTitle(job.title)} terms={highlightTermsList} />
             </h4>
+            {job.hasCv && <CvFolderButton onOpen={() => void onOpenCvFolder(job.key)} />}
             {viewOpts.showScore && <ScoreBadge score={job.total} />}
             {job.opinion && <OpinionBadge opinion={job.opinion} />}
             {isGlobe && (

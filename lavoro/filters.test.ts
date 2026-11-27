@@ -27,6 +27,7 @@ const base: JobRow = {
   workMode: 'remote',
   isRemote: true,
   detailsMissing: false,
+  hasCv: false,
   postedAt: 1000,
   firstSeen: 1_700_000_000_000,
   importedAt: null,

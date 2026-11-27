@@ -94,6 +94,61 @@ test('switching postings morphs the header and crossfades the description', asyn
   await page.screenshot({ path: '/tmp/hub88-b-lavoro.png', animations: 'disabled' });
 });
 
+test('CV folder buttons work in posting cards, rows and detail without opening detail from the icon', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 3840, height: 2160 });
+  await page.goto('/desk/ricerca');
+  await page.getByRole('button', { name: 'Raccogli', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Da valutare 6' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Attività in corso: .*Raccogli annunci/ })).toHaveCount(0);
+  const card = page.locator('[data-posting-key]').filter({ hasText: 'Frontend Developer React' });
+  const sibling = page.locator('[data-posting-key]').filter({ hasText: 'Web Developer Junior' });
+  const cv = card.getByRole('button', { name: 'CV pronto: apri cartella', exact: true });
+  await expect(cv).toBeVisible();
+  await expect(sibling.getByRole('button', { name: 'CV pronto: apri cartella' })).toHaveCount(0);
+  for (const view of ['cards', 'rows']) {
+    if (view === 'rows') {
+      await page.getByRole('button', { name: 'Opzioni vista' }).click();
+      await page.getByRole('button', { name: 'Righe', exact: true }).click();
+      await page.keyboard.press('Escape');
+    }
+    const opened = page.waitForResponse((response) => response.url().includes('lavoro.openCvFolder'));
+    await cv.click();
+    expect((await opened).ok()).toBe(true);
+    await expect(page.locator('dialog[open]')).toHaveCount(0);
+  }
+  await card.getByRole('heading').click();
+  const dialog = page.locator('dialog[open]');
+  const action = dialog.getByRole('button', { name: 'Apri cartella CV', exact: true });
+  await expect(action).toBeVisible();
+  const opened = page.waitForResponse((response) => response.url().includes('lavoro.openCvFolder'));
+  await action.click();
+  expect((await opened).ok()).toBe(true);
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Chiudi', exact: true }).click();
+  await sibling.getByRole('heading').click();
+  await expect(dialog.getByRole('button', { name: 'Apri cartella CV', exact: true })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Chiudi', exact: true }).click();
+});
+
+test('CV folder buttons appear only on applied cards with PDFs', async ({ page }) => {
+  await page.setViewportSize({ width: 3840, height: 2160 });
+  await page.goto('/desk/ricerca?tab=candidature&candidature=all');
+  const card = page
+    .locator('.group')
+    .filter({ has: page.getByRole('heading', { name: 'Principal Engineer', exact: true }) });
+  const sibling = page
+    .locator('.group')
+    .filter({ has: page.getByRole('heading', { name: 'Staff Developer', exact: true }) });
+  await expect(sibling).toBeVisible();
+  await expect(sibling.getByRole('button', { name: 'CV pronto: apri cartella' })).toHaveCount(0);
+  const opened = page.waitForResponse((response) => response.url().includes('lavoro.openCvFolder'));
+  await card.getByRole('button', { name: 'CV pronto: apri cartella', exact: true }).click();
+  expect((await opened).ok()).toBe(true);
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+});
+
 test('posting capture stacks and returns focus to the detail', async ({ page, pc }) => {
   await page.setViewportSize({ width: 3840, height: 2160 });
   await page.goto('/desk/ricerca');

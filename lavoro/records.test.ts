@@ -21,6 +21,7 @@ const base: JobRow = {
   workMode: null,
   isRemote: false,
   detailsMissing: false,
+  hasCv: false,
   postedAt: null,
   firstSeen: 1000,
   importedAt: null,

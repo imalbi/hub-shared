@@ -34,3 +34,5 @@
 - Collection/prova and Pareri activity links open `/desk/system?tab=jobs` for progress, logs and cancellation; result links continue to open Ricerca.
 
 - `server.ts` debounces MailCapability events for configured accounts; events during an active mail check coalesce into one follow-up. Close unsubscribes and clears both event and fallback timers before awaiting work.
+
+- `server.ts` derives `JobRow.hasCv` from one live candidature-folder scan per list request; `openCvFolder` revalidates it. Both directory and PDF realpaths must stay inside the candidature root, including when an escaping directory links its PDF back inside. Never send filesystem paths to the client.

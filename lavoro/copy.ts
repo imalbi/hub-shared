@@ -224,6 +224,9 @@ export const copy = {
   },
 
   actions: {
+    cv_ready: 'CV pronto: apri cartella',
+    open_cv_folder: 'Apri cartella CV',
+    cv_error: 'Impossibile aprire la cartella CV',
     archive: 'Archivia',
     restore: 'Ripristina',
     trash: 'Cestino',
